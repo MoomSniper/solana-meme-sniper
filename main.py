@@ -1,71 +1,92 @@
 import os
-import time
+import telebot
 import requests
-import logging
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Bot
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
-from datetime import datetime
+import time
+import threading
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID"))
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY")
+BIRDEYE_API = os.getenv("BIRDEYE_API")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+if not all([BIRDEYE_API, BOT_TOKEN, TELEGRAM_ID]):
+    raise Exception("❌ One or more environment variables are missing. Check BIRDEYE_API, BOT_TOKEN, and TELEGRAM_ID.")
 
-bot = Bot(token=TELEGRAM_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN)
+active_coin = None
+track_deep = False
 
-def fetch_top_sol_tokens():
-    url = f"https://public-api.birdeye.so/public/tokenlist?sort_by=volume_24h_usd&sort_type=desc&limit=20&offset=0&chain=solana"
-    headers = {"X-API-KEY": BIRDEYE_API_KEY}
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json()["data"]["tokens"]
-    return []
+def send_alert(message):
+    bot.send_message(TELEGRAM_ID, message)
 
-def format_token_info(token):
-    return f"<b>{token['name']}</b> ({token['symbol']})\nMarket Cap: ${int(token['mc'])}\nVolume 24h: ${int(token['volume_24h'])}\n<a href='https://dexscreener.com/solana/{token['address']}'>DexScreener</a> | <a href='https://birdeye.so/token/{token['address']}?chain=solana'>Birdeye</a>"
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "🚀 Sniper bot is LIVE. Send 'in' to track, 'out' to stop.")
 
-def send_token_alert(token):
-    text = format_token_info(token)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("IN ð", callback_data=f"in:{token['address']}"),
-         InlineKeyboardButton("OUT ð¨", callback_data=f"out:{token['address']}")]
-    ])
-    bot.send_message(chat_id=TELEGRAM_USER_ID, text=text, parse_mode="HTML", reply_markup=keyboard)
+@bot.message_handler(func=lambda message: message.text.lower() == 'in')
+def handle_in(message):
+    global track_deep
+    track_deep = True
+    bot.reply_to(message, "🧠 Deep tracking mode enabled.")
 
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Solana God Mode Sniper Activated ð")
+@bot.message_handler(func=lambda message: message.text.lower() == 'out')
+def handle_out(message):
+    global track_deep
+    track_deep = False
+    bot.reply_to(message, "🛑 Tracking stopped.")
 
-def button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-    action, token_addr = query.data.split(":")
+def is_coin_alpha(coin):
+    try:
+        mc = coin['fdv_usd']
+        vol = coin['volume_1h_quote']
+        buyers = coin['txns']['buys']
+        base = coin['base_token']['symbol']
+        telegram = coin['dex_info'].get('telegram')
+        twitter = coin['dex_info'].get('twitter')
 
-    if action == "in":
-        context.bot.send_message(chat_id=TELEGRAM_USER_ID,
-                                 text=f"ð Deep research initiated on {token_addr}... checking whales, trends, influencers, entries and exits.")
-        # Placeholder for future research integration
-    elif action == "out":
-        context.bot.send_message(chat_id=TELEGRAM_USER_ID,
-                                 text=f"ð¸ Exiting position and securing profits on {token_addr}")
+        if (
+            mc and mc < 300000 and
+            vol and vol > 5000 and
+            buyers and buyers >= 15 and
+            base and
+            telegram and twitter
+        ):
+            return True
+    except Exception:
+        return False
+    return False
 
-def main():
-    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CallbackQueryHandler(button))
+def format_alert(coin):
+    name = coin['base_token']['name']
+    symbol = coin['base_token']['symbol']
+    mc = round(coin['fdv_usd'])
+    vol = round(coin['volume_1h_quote'])
+    link = f"https://birdeye.so/token/{coin['address']}?chain=solana"
+    return f"🔥 **ALPHA FOUND**\n{name} (${symbol})\nMarket Cap: ${mc}\n1h Volume: ${vol}\n[View on Birdeye]({link})"
 
-    updater.start_polling()
-
-    sent_addresses = set()
+def track_coins():
+    seen = set()
     while True:
-        tokens = fetch_top_sol_tokens()
-        for token in tokens:
-            if token["address"] not in sent_addresses and token.get("mc", 0) and token.get("volume_24h", 0):
-                if token["mc"] < 300000 and token["volume_24h"] > 5000:
-                    send_token_alert(token)
-                    sent_addresses.add(token["address"])
-        time.sleep(60)
+        try:
+            url = f"https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana"
+            headers = {'X-API-KEY': BIRDEYE_API}
+            response = requests.get(url, headers=headers)
+            tokens = response.json().get('data', [])
 
-if __name__ == "__main__":
-    main()
+            for token in tokens:
+                address = token.get('address')
+                if address and address not in seen:
+                    if is_coin_alpha(token):
+                        seen.add(address)
+                        alert_msg = format_alert(token)
+                        send_alert(alert_msg)
+        except Exception as e:
+            print(f"[ERROR] {str(e)}")
+
+        time.sleep(2)
+
+# Background polling thread
+t = threading.Thread(target=track_coins)
+t.start()
+
+print("🚀 Sniper bot running in GOD MODE +++++")
+bot.infinity_polling()
