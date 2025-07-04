@@ -120,6 +120,9 @@ if __name__ == "__main__":
         await application.bot.delete_webhook()
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
         await application.start()
-        app.run(host="0.0.0.0", port=10000)
+        import threading
+        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+        await application.updater.start_polling()
+        await application.updater.idle()
 
     asyncio.run(main())
