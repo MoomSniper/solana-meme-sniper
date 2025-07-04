@@ -114,13 +114,12 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_t
 
 t = threading.Thread(target=track_tokens)
 t.start()
-
 if __name__ == "__main__":
     async def main():
- await application.initialize()
-await application.start()
-await application.bot.delete_webhook()
-await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-app.run(host="0.0.0.0", port=10000)
+        await application.initialize()
+        await application.bot.delete_webhook()
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+        await application.start()
+        app.run(host="0.0.0.0", port=10000)
 
     asyncio.run(main())
