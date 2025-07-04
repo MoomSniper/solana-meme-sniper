@@ -113,7 +113,6 @@ application.add_handler(CallbackQueryHandler(handle_button))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
 t = threading.Thread(target=track_tokens)
-t.start()
 if __name__ == "__main__":
     async def main():
         await application.initialize()
@@ -122,8 +121,5 @@ if __name__ == "__main__":
         await application.start()
         import threading
         threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    await application.start()
-import threading
-threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 
     asyncio.run(main())
