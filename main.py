@@ -2,12 +2,13 @@ import os
 import time
 import threading
 import requests
-import asyncio
-from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-
-app = Flask(__name__)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
@@ -95,32 +96,20 @@ def track_tokens():
             print(f"Error tracking: {e}")
         time.sleep(10)
 
-### FLASK ENDPOINT ###
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
-    application.process_update(update)
-    return "ok"
-
-@app.route("/")
-def index():
-    return "🚀 Bot running."
-
-### INIT ###
+### HANDLER REGISTRATION ###
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(handle_button))
 application.add_handler(CommandHandler("in", handle_text))
 application.add_handler(CommandHandler("out", handle_text))
 application.add_handler(CommandHandler("watch", handle_text))
 
-t = threading.Thread(target=track_tokens)
-t.start()
-
+### START EVERYTHING ###
 if __name__ == "__main__":
-    async def main():
-        await application.bot.delete_webhook()
-        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-        app.run(host="0.0.0.0", port=10000)
+    t = threading.Thread(target=track_tokens)
+    t.start()
 
-    asyncio.run(main())
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=10000,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    )
