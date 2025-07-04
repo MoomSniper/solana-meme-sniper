@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # --- Telegram Bot ---
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+application = Application.builder().token(BOT_TOKEN).build()
 
 # --- Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
