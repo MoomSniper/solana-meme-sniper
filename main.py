@@ -1,49 +1,53 @@
 import os
 import logging
+import asyncio
 from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    Application,
-    ContextTypes,
-    CommandHandler
+    Application, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 )
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Get env vars
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://your-app.onrender.com
 
-# Logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# Telegram app
+application: Application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # FastAPI app
 app = FastAPI()
 
-# Build Telegram bot application
-application: Application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-# Example command
+# === Command Handlers ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Sniper Bot ready. God Mode +++++ engaged.")
+    await update.message.reply_text("✅ Sniper Bot: God Mode+++++++ initialized.")
 
+# === Add Handlers ===
 application.add_handler(CommandHandler("start", start))
 
-# Webhook endpoint
+# === Webhook Endpoint ===
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    try:
-        data = await request.json()
-        update = Update.de_json(data, application.bot)
+    raw_data = await request.body()
+    update = Update.de_json(data=raw_data.decode("utf-8"), bot=application.bot)
+
+    if not application.ready:
         await application.initialize()
-        await application.process_update(update)
-    except Exception as e:
-        logging.error(f"Error in webhook: {e}")
+    await application.process_update(update)
+
     return {"ok": True}
 
-# Set webhook on startup
+# === Set Webhook on Startup ===
 @app.on_event("startup")
 async def startup():
     await application.initialize()
     await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-    logging.info("Webhook successfully set.")
+    logger.info("🚀 Webhook set successfully.")
+
+# === Optional Healthcheck ===
+@app.get("/")
+def root():
+    return {"status": "running"}
