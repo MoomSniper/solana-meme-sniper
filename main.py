@@ -122,7 +122,8 @@ if __name__ == "__main__":
         await application.start()
         import threading
         threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-        await application.updater.start_polling()
-        await application.updater.idle()
+    await application.start()
+import threading
+threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 
     asyncio.run(main())
