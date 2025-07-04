@@ -117,8 +117,16 @@ if __name__ == "__main__":
     async def main():
         await application.initialize()
         await application.bot.delete_webhook()
-        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+        
+        url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        try:
+            res = await application.bot.set_webhook(url=url)
+            print(f"✅ Webhook set to: {url} — Telegram response: {res}")
+        except Exception as e:
+            print(f"❌ Failed to set webhook: {e}")
+
         await application.start()
+
         import threading
         threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 
