@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import requests
+import asyncio
 from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -97,8 +98,9 @@ def track_tokens():
 ### FLASK ENDPOINT ###
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put_nowait(update)
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
+    application.process_update(update)
     return "ok"
 
 @app.route("/")
@@ -116,6 +118,9 @@ t = threading.Thread(target=track_tokens)
 t.start()
 
 if __name__ == "__main__":
-    application.bot.delete_webhook()
-    application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    app.run(host="0.0.0.0", port=10000)
+    async def main():
+        await application.bot.delete_webhook()
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+        app.run(host="0.0.0.0", port=10000)
+
+    asyncio.run(main())
