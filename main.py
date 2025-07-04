@@ -19,7 +19,6 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 # Flask
 app = Flask(__name__)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
-
 seen_tokens = set()
 watchlist = []
 
@@ -46,10 +45,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif txt == "watch":
         await update.message.reply_text("👀 Watching coins that are heating up...")
 
-### ASYNC ALERT FUNC ###
-async def send_alert(text, btns=None):
-    await application.bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=btns)
-
 ### ALERTING ###
 def is_alpha(coin):
     try:
@@ -70,15 +65,10 @@ def alert_msg(coin):
     return f"🔥 <b>{name}</b> (${symbol})\nMarket Cap: ${mc}\nVolume: ${vol}\n<a href='https://birdeye.so/token/{addr}?chain=solana'>Birdeye</a>", addr
 
 def track_tokens():
-    global seen_tokens
-    loop = asyncio.get_event_loop()
-
     while True:
         try:
-            res = requests.get(
-                "https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana",
-                headers={"X-API-KEY": BIRDEYE_API}
-            )
+            res = requests.get("https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana",
+                               headers={"X-API-KEY": BIRDEYE_API})
             tokens = res.json().get("data", [])
 
             for coin in tokens:
@@ -90,14 +80,13 @@ def track_tokens():
                     text, address = alert_msg(coin)
                     btns = InlineKeyboardMarkup([[InlineKeyboardButton("IN 🔍", callback_data=f"in:{address}"),
                                                   InlineKeyboardButton("OUT 💸", callback_data=f"out:{address}")]])
-                    asyncio.run_coroutine_threadsafe(send_alert(text, btns), loop)
+                    asyncio.run(application.bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=btns))
                     seen_tokens.add(addr)
                 else:
                     vol = coin.get('volume_1h_quote', 0)
                     buyers = coin.get('txns', {}).get('buys', 0)
                     if vol > 3500 and buyers >= 10 and addr not in watchlist:
-                        text = f"⏳ Potential: {coin['base_token']['name']} ${coin['base_token']['symbol']} is heating up..."
-                        asyncio.run_coroutine_threadsafe(send_alert(text), loop)
+                        asyncio.run(application.bot.send_message(chat_id=TELEGRAM_ID, text=f"⏳ Potential: {coin['base_token']['name']} ${coin['base_token']['symbol']} is heating up..."))
                         watchlist.append(addr)
         except Exception as e:
             print(f"Error tracking: {e}")
@@ -124,7 +113,7 @@ if __name__ == "__main__":
     async def main():
         await application.initialize()
         await application.bot.delete_webhook()
-        
+
         url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
         try:
             res = await application.bot.set_webhook(url=url)
@@ -133,12 +122,7 @@ if __name__ == "__main__":
             print(f"❌ Failed to set webhook: {e}")
 
         await application.start()
-
-        # Start token scanner
-        t = threading.Thread(target=track_tokens)
-        t.start()
-
-        # Start Flask
-        app.run(host="0.0.0.0", port=10000)
+        threading.Thread(target=track_tokens).start()
+        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 
     asyncio.run(main())
