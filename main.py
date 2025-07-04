@@ -118,11 +118,21 @@ application.add_handler(CommandHandler("in", handle_text))
 application.add_handler(CommandHandler("out", handle_text))
 application.add_handler(CommandHandler("watch", handle_text))
 
-# TRACK COINS IN BACKGROUND
+# BACKGROUND TRACKING THREAD
 t = threading.Thread(target=track_tokens)
+t.daemon = True
 t.start()
 
+# SAFE WEBHOOK SETUP
+@app.before_first_request
+def setup_webhook():
+    try:
+        application.bot.delete_webhook()
+        application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+        print("[✅] Webhook set successfully.")
+    except Exception as e:
+        print(f"[ERROR] Setting webhook: {e}")
+
+# RUN SERVER
 if __name__ == "__main__":
-    application.bot.delete_webhook()
-    application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
     app.run(host="0.0.0.0", port=10000)
