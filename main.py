@@ -2,59 +2,61 @@ import os
 import time
 import threading
 import requests
-import asyncio
 from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters
+)
 
-# ENV VARS
+# ENVIRONMENT
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 BIRDEYE_API = os.getenv("BIRDEYE_API")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # example: https://your-bot-name.onrender.com
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# TELEGRAM
-bot = Bot(BOT_TOKEN)
+# TELEGRAM BOT SETUP
+bot = Bot(token=BOT_TOKEN)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # FLASK
 app = Flask(__name__)
 
-# GLOBAL STATE
+# GLOBALS
 seen_tokens = set()
-tracking = False
 watchlist = []
 
-### HANDLERS ###
+# ==== HANDLERS ==== #
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper bot ONLINE. Send 'in', 'out', or 'watch'.")
+    await update.message.reply_text("🚀 Sniper bot is LIVE. Send 'in' to track, 'out' to stop.")
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message.text.lower()
+    if message == "in":
+        await update.message.reply_text("🧠 Deep tracking mode enabled.")
+    elif message == "out":
+        await update.message.reply_text("🛑 Tracking stopped.")
+    elif message == "watch":
+        await update.message.reply_text("👀 Watching hot coins...")
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     action, address = query.data.split(":")
     if action == "in":
-        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"🔍 Deep scan on {address} starting now...")
+        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"🔍 Deep scan on {address} started.")
     elif action == "out":
-        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"📈 Done tracking {address}. Closing position.")
+        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"📤 Stopped tracking {address}.")
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global tracking
-    txt = update.message.text.lower()
-    if txt == "in":
-        tracking = True
-        await update.message.reply_text("🧠 Deep tracking ON")
-    elif txt == "out":
-        tracking = False
-        await update.message.reply_text("❌ Tracking OFF")
-    elif txt == "watch":
-        await update.message.reply_text("👀 Watching coins that are heating up...")
-
-### FILTER + ALERT LOGIC ###
+# ==== SNIPER LOGIC ==== #
 def is_alpha(coin):
     try:
-        mc = coin['fdv_usd']
-        vol = coin['volume_1h_quote']
+        mc = coin.get('fdv_usd')
+        vol = coin.get('volume_1h_quote')
         buyers = coin['txns']['buys']
         has_socials = coin['dex_info'].get('telegram') and coin['dex_info'].get('twitter')
         return mc and mc < 300000 and vol > 5000 and buyers >= 15 and has_socials
@@ -82,54 +84,47 @@ def track_tokens():
                 addr = coin.get("address")
                 if not addr or addr in seen_tokens:
                     continue
-
                 if is_alpha(coin):
                     text, address = alert_msg(coin)
-                    btns = InlineKeyboardMarkup([
+                    buttons = InlineKeyboardMarkup([
                         [InlineKeyboardButton("IN 🔍", callback_data=f"in:{address}"),
                          InlineKeyboardButton("OUT 💸", callback_data=f"out:{address}")]
                     ])
-                    bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=btns)
+                    bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=buttons)
                     seen_tokens.add(addr)
-                else:
-                    vol = coin.get('volume_1h_quote', 0)
-                    buyers = coin.get('txns', {}).get('buys', 0)
-                    if vol > 3500 and buyers >= 10 and addr not in watchlist:
-                        bot.send_message(chat_id=TELEGRAM_ID, text=f"⏳ Potential: {coin['base_token']['name']} ${coin['base_token']['symbol']} is heating up...")
+                elif coin.get('volume_1h_quote', 0) > 3500 and coin.get('txns', {}).get('buys', 0) >= 10:
+                    if addr not in watchlist:
+                        bot.send_message(chat_id=TELEGRAM_ID, text=f"⏳ {coin['base_token']['name']} is heating up.")
                         watchlist.append(addr)
         except Exception as e:
-            print(f"[ERROR] token scan: {e}")
+            print(f"[SNIPER ERROR] {e}")
         time.sleep(10)
 
-### WEBHOOK ROUTES ###
+# ==== FLASK ROUTES ==== #
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     application.update_queue.put_nowait(update)
     return "ok", 200
 
-@app.route("/")
-def index():
-    return "🚀 Sniper Bot Running"
+@app.route("/", methods=["GET"])
+def home():
+    return "🚀 Sniper Bot Running", 200
 
-### INIT ###
+# ==== MAIN EXEC ==== #
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(handle_button))
-application.add_handler(CommandHandler("in", handle_text))
-application.add_handler(CommandHandler("out", handle_text))
-application.add_handler(CommandHandler("watch", handle_text))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-# TRACK COINS IN BACKGROUND
-t = threading.Thread(target=track_tokens)
-t.start()
+# BACKGROUND THREAD
+threading.Thread(target=track_tokens, daemon=True).start()
 
-# SET WEBHOOK PROPERLY (awaited)
 if __name__ == "__main__":
+    import asyncio
     async def setup():
         await application.bot.delete_webhook()
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+        application.run_polling()
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(setup())
-
+    asyncio.run(setup())
     app.run(host="0.0.0.0", port=10000)
