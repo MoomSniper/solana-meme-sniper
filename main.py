@@ -1,45 +1,43 @@
 import os
+import logging
 from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    ContextTypes,
-    CommandHandler
+    ApplicationBuilder, CommandHandler, ContextTypes
 )
-import uvicorn
 
-# Load environment variables
+# --- Config ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # example: https://yourapp.onrender.com
-PORT = int(os.getenv("PORT", default=10000))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# Init FastAPI app and Telegram bot
+# --- Logging ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- FastAPI App ---
 app = FastAPI()
+
+# --- Telegram Bot ---
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Example /start command
+# --- Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="✅ Bot is live. Webhook setup complete. God Mode+++++ active."
-    )
+    await update.message.reply_text("🚀 Sniper bot is locked in. Type 'in' to track.")
 
 application.add_handler(CommandHandler("start", start))
 
-# Webhook route
-@app.post("/")
-async def telegram_webhook(req: Request):
-    data = await req.json()
+# --- Startup ---
+@app.on_event("startup")
+async def startup():
+    await application.initialize()
+    await application.bot.delete_webhook()
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    logger.info("✅ Webhook set and application initialized.")
+
+# --- Webhook Endpoint ---
+@app.post("/webhook")
+async def telegram_webhook(request: Request):
+    data = await request.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
-    return {"ok": True}
-
-# On startup: set Telegram webhook
-@app.on_event("startup")
-async def on_startup():
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    print("✅ Webhook set to:", WEBHOOK_URL)
-
-# Run app with uvicorn
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT)
+    return {"status": "ok"}
