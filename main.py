@@ -5,9 +5,7 @@ import requests
 import asyncio
 from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-
-app = Flask(__name__)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
@@ -15,13 +13,13 @@ BIRDEYE_API = os.getenv("BIRDEYE_API")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 bot = Bot(BOT_TOKEN)
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+application = Application.builder().token(BOT_TOKEN).build()
 
 seen_tokens = set()
 tracking = False
 watchlist = []
 
-### HANDLERS ###
+### --- Handlers --- ###
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 Sniper bot ONLINE. Send 'in', 'out', or 'watch'.")
 
@@ -29,7 +27,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     action, address = query.data.split(":")
-
     if action == "in":
         await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"🔍 Deep scan on {address} starting now...")
     elif action == "out":
@@ -47,7 +44,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif txt == "watch":
         await update.message.reply_text("👀 Watching coins that are heating up...")
 
-### ALERTING ###
+### --- Alpha Checks --- ###
 def is_alpha(coin):
     try:
         mc = coin['fdv_usd']
@@ -95,32 +92,37 @@ def track_tokens():
             print(f"Error tracking: {e}")
         time.sleep(10)
 
-### FLASK ENDPOINT ###
+### --- Flask app --- ###
+from flask import Flask
+
+app = Flask(__name__)
+
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
-    application.process_update(update)
+    update = Update.de_json(request.get_json(force=True), bot)
+    asyncio.run(application.process_update(update))
     return "ok"
 
 @app.route("/")
 def index():
-    return "🚀 Bot running."
+    return "Bot is running."
 
-### INIT ###
+# Handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(handle_button))
-application.add_handler(CommandHandler("in", handle_text))
-application.add_handler(CommandHandler("out", handle_text))
-application.add_handler(CommandHandler("watch", handle_text))
+application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
 
+# Token tracking thread
 t = threading.Thread(target=track_tokens)
 t.start()
 
+# Webhook setup
 if __name__ == "__main__":
-    async def main():
+    async def run():
+        await application.initialize()
         await application.bot.delete_webhook()
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+        await application.start()
         app.run(host="0.0.0.0", port=10000)
 
-    asyncio.run(main())
+    asyncio.run(run())
