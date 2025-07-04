@@ -1,130 +1,100 @@
 import os
-import time
 import threading
+import logging
+import json
+import time
 import requests
-from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    ContextTypes,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters
-)
 
-# ENVIRONMENT
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+from flask import Flask
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# TELEGRAM BOT SETUP
-bot = Bot(token=BOT_TOKEN)
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+# --- ENV ---
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+TELEGRAM_ID = int(os.environ["TELEGRAM_ID"])
+BIRDEYE_API = os.environ["BIRDEYE_API"]
+PORT = int(os.environ.get("PORT", 10000))
 
-# FLASK
+# --- Setup Logging ---
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+# --- Flask (keep Render happy) ---
 app = Flask(__name__)
 
-# GLOBALS
-seen_tokens = set()
-watchlist = []
+@app.route('/')
+def root():
+    return "God Mode Sniper is alive."
 
-# ==== HANDLERS ==== #
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
+threading.Thread(target=run_flask).start()
+
+# --- Telegram Bot Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper bot is LIVE. Send 'in' to track, 'out' to stop.")
+    await update.message.reply_text("🚀 Sniper Bot is Active in God Mode+++++++")
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message.text.lower()
-    if message == "in":
-        await update.message.reply_text("🧠 Deep tracking mode enabled.")
-    elif message == "out":
-        await update.message.reply_text("🛑 Tracking stopped.")
-    elif message == "watch":
-        await update.message.reply_text("👀 Watching hot coins...")
-
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    action, address = query.data.split(":")
-    if action == "in":
-        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"🔍 Deep scan on {address} started.")
-    elif action == "out":
-        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"📤 Stopped tracking {address}.")
-
-# ==== SNIPER LOGIC ==== #
-def is_alpha(coin):
+# --- Birdeye Scanning Logic ---
+def fetch_top_sol_tokens():
+    url = "https://public-api.birdeye.so/public/tokenlist?chain=solana"
+    headers = {"X-API-KEY": BIRDEYE_API}
     try:
-        mc = coin.get('fdv_usd')
-        vol = coin.get('volume_1h_quote')
-        buyers = coin['txns']['buys']
-        has_socials = coin['dex_info'].get('telegram') and coin['dex_info'].get('twitter')
-        return mc and mc < 300000 and vol > 5000 and buyers >= 15 and has_socials
-    except:
-        return False
+        res = requests.get(url, headers=headers)
+        data = res.json()
+        tokens = data.get("data", [])
+        return sorted(tokens, key=lambda x: x.get("volume_h24", 0), reverse=True)
+    except Exception as e:
+        logging.error(f"Error fetching tokens: {e}")
+        return []
 
-def alert_msg(coin):
-    name = coin['base_token']['name']
-    symbol = coin['base_token']['symbol']
-    addr = coin['address']
-    mc = round(coin['fdv_usd'])
-    vol = round(coin['volume_1h_quote'])
-    return f"🔥 <b>{name}</b> (${symbol})\nMarket Cap: ${mc}\nVolume: ${vol}\n<a href='https://birdeye.so/token/{addr}?chain=solana'>Birdeye</a>", addr
+def send_alpha_alert(token):
+    base_url = f"https://birdeye.so/token/{token['address']}?chain=solana"
+    msg = (
+        f"🧠 *Alpha Coin Detected*\n"
+        f"Name: `{token['name']}`\n"
+        f"Symbol: `{token['symbol']}`\n"
+        f"MC: `${int(token['market_cap'])}`\n"
+        f"24h Volume: `${int(token['volume_h24'])}`\n"
+        f"[View on Birdeye]({base_url})"
+    )
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        data={
+            "chat_id": TELEGRAM_ID,
+            "text": msg,
+            "parse_mode": "Markdown"
+        }
+    )
 
-def track_tokens():
-    global seen_tokens
+def run_sniper_loop():
+    scanned = set()
     while True:
-        try:
-            res = requests.get(
-                "https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana",
-                headers={"X-API-KEY": BIRDEYE_API}
-            )
-            tokens = res.json().get("data", [])
-            for coin in tokens:
-                addr = coin.get("address")
-                if not addr or addr in seen_tokens:
-                    continue
-                if is_alpha(coin):
-                    text, address = alert_msg(coin)
-                    buttons = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("IN 🔍", callback_data=f"in:{address}"),
-                         InlineKeyboardButton("OUT 💸", callback_data=f"out:{address}")]
-                    ])
-                    bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=buttons)
-                    seen_tokens.add(addr)
-                elif coin.get('volume_1h_quote', 0) > 3500 and coin.get('txns', {}).get('buys', 0) >= 10:
-                    if addr not in watchlist:
-                        bot.send_message(chat_id=TELEGRAM_ID, text=f"⏳ {coin['base_token']['name']} is heating up.")
-                        watchlist.append(addr)
-        except Exception as e:
-            print(f"[SNIPER ERROR] {e}")
+        tokens = fetch_top_sol_tokens()
+        for token in tokens:
+            try:
+                mc = token.get("market_cap", 0)
+                vol = token.get("volume_h24", 0)
+                buyers = token.get("txns_h24", 0)
+
+                if (
+                    token["address"] not in scanned and
+                    5000 <= vol <= 300000 and
+                    10000 <= mc <= 300000 and
+                    buyers >= 20
+                ):
+                    send_alpha_alert(token)
+                    scanned.add(token["address"])
+            except Exception as e:
+                logging.error(f"Failed during scan loop: {e}")
         time.sleep(10)
 
-# ==== FLASK ROUTES ==== #
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put_nowait(update)
-    return "ok", 200
+# --- Launch Bot + Sniper ---
+app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
+app_bot.add_handler(CommandHandler("start", start))
 
-@app.route("/", methods=["GET"])
-def home():
-    return "🚀 Sniper Bot Running", 200
+# Run sniper in background
+threading.Thread(target=run_sniper_loop).start()
 
-# ==== MAIN EXEC ==== #
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CallbackQueryHandler(handle_button))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-# BACKGROUND THREAD
-threading.Thread(target=track_tokens, daemon=True).start()
-
-if __name__ == "__main__":
-    import asyncio
-    async def setup():
-        await application.bot.delete_webhook()
-        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-        application.run_polling()
-
-    asyncio.run(setup())
-    app.run(host="0.0.0.0", port=10000)
+# Start bot
+print("🤖 Telegram bot running...")
+app_bot.run_polling()
