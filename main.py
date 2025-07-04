@@ -2,20 +2,24 @@ import os
 import time
 import threading
 import requests
+from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ENV VARS
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-print(f"[DEBUG] Loaded BOT_TOKEN: {BOT_TOKEN}")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 BIRDEYE_API = os.getenv("BIRDEYE_API")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # example: https://your-bot-name.onrender.com
 
-# TELEGRAM INIT
+# TELEGRAM
 bot = Bot(BOT_TOKEN)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
+# FLASK
+app = Flask(__name__)
+
+# GLOBAL STATE
 seen_tokens = set()
 tracking = False
 watchlist = []
@@ -93,8 +97,19 @@ def track_tokens():
                         bot.send_message(chat_id=TELEGRAM_ID, text=f"⏳ Potential: {coin['base_token']['name']} ${coin['base_token']['symbol']} is heating up...")
                         watchlist.append(addr)
         except Exception as e:
-            print(f"[ERROR TRACKING] {e}")
+            print(f"[ERROR] token scan: {e}")
         time.sleep(10)
+
+### WEBHOOK ROUTES ###
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
+    return "ok", 200
+
+@app.route("/")
+def index():
+    return "🚀 Sniper Bot Running"
 
 ### INIT ###
 application.add_handler(CommandHandler("start", start))
@@ -103,14 +118,11 @@ application.add_handler(CommandHandler("in", handle_text))
 application.add_handler(CommandHandler("out", handle_text))
 application.add_handler(CommandHandler("watch", handle_text))
 
-if __name__ == "__main__":
-    # Background thread to track tokens
-    t = threading.Thread(target=track_tokens)
-    t.start()
+# TRACK COINS IN BACKGROUND
+t = threading.Thread(target=track_tokens)
+t.start()
 
-    # Telegram Webhook Listener
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=10000,
-        webhook_url=f"{WEBHOOK_URL}/webhook"
-    )
+if __name__ == "__main__":
+    application.bot.delete_webhook()
+    application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    app.run(host="0.0.0.0", port=10000)
