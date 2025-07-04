@@ -9,6 +9,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 BIRDEYE_API = os.getenv("BIRDEYE_API")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
