@@ -18,7 +18,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # Flask
 app = Flask(__name__)
-bot = Bot(BOT_TOKEN)
+application.bot.send_message(...)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 seen_tokens = set()
