@@ -2,13 +2,11 @@ import os
 import time
 import threading
 import requests
+from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+
+app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
@@ -30,7 +28,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     action, address = query.data.split(":")
-
     if action == "in":
         await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"🔍 Deep scan on {address} starting now...")
     elif action == "out":
@@ -48,7 +45,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif txt == "watch":
         await update.message.reply_text("👀 Watching coins that are heating up...")
 
-### ALERTING ###
+### FILTER + ALERT LOGIC ###
 def is_alpha(coin):
     try:
         mc = coin['fdv_usd']
@@ -71,10 +68,11 @@ def track_tokens():
     global seen_tokens
     while True:
         try:
-            res = requests.get("https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana",
-                               headers={"X-API-KEY": BIRDEYE_API})
+            res = requests.get(
+                "https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana",
+                headers={"X-API-KEY": BIRDEYE_API}
+            )
             tokens = res.json().get("data", [])
-
             for coin in tokens:
                 addr = coin.get("address")
                 if not addr or addr in seen_tokens:
@@ -96,20 +94,28 @@ def track_tokens():
             print(f"Error tracking: {e}")
         time.sleep(10)
 
-### HANDLER REGISTRATION ###
+### FIXED WEBHOOK ROUTE ###
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
+    return "ok"
+
+@app.route("/")
+def index():
+    return "🚀 Bot running."
+
+### INIT ###
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(handle_button))
 application.add_handler(CommandHandler("in", handle_text))
 application.add_handler(CommandHandler("out", handle_text))
 application.add_handler(CommandHandler("watch", handle_text))
 
-### START EVERYTHING ###
-if __name__ == "__main__":
-    t = threading.Thread(target=track_tokens)
-    t.start()
+t = threading.Thread(target=track_tokens)
+t.start()
 
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=10000,
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
-    )
+if __name__ == "__main__":
+    application.bot.delete_webhook()
+    application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    app.run(host="0.0.0.0", port=10000)
