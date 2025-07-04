@@ -1,100 +1,45 @@
 import os
-import threading
-import logging
-import json
-import time
-import requests
-
-from flask import Flask
+from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler
+)
+import uvicorn
 
-# --- ENV ---
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-TELEGRAM_ID = int(os.environ["TELEGRAM_ID"])
-BIRDEYE_API = os.environ["BIRDEYE_API"]
-PORT = int(os.environ.get("PORT", 10000))
+# Load environment variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # example: https://yourapp.onrender.com
+PORT = int(os.getenv("PORT", default=10000))
 
-# --- Setup Logging ---
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+# Init FastAPI app and Telegram bot
+app = FastAPI()
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# --- Flask (keep Render happy) ---
-app = Flask(__name__)
-
-@app.route('/')
-def root():
-    return "God Mode Sniper is alive."
-
-def run_flask():
-    app.run(host="0.0.0.0", port=PORT)
-
-threading.Thread(target=run_flask).start()
-
-# --- Telegram Bot Commands ---
+# Example /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper Bot is Active in God Mode+++++++")
-
-# --- Birdeye Scanning Logic ---
-def fetch_top_sol_tokens():
-    url = "https://public-api.birdeye.so/public/tokenlist?chain=solana"
-    headers = {"X-API-KEY": BIRDEYE_API}
-    try:
-        res = requests.get(url, headers=headers)
-        data = res.json()
-        tokens = data.get("data", [])
-        return sorted(tokens, key=lambda x: x.get("volume_h24", 0), reverse=True)
-    except Exception as e:
-        logging.error(f"Error fetching tokens: {e}")
-        return []
-
-def send_alpha_alert(token):
-    base_url = f"https://birdeye.so/token/{token['address']}?chain=solana"
-    msg = (
-        f"🧠 *Alpha Coin Detected*\n"
-        f"Name: `{token['name']}`\n"
-        f"Symbol: `{token['symbol']}`\n"
-        f"MC: `${int(token['market_cap'])}`\n"
-        f"24h Volume: `${int(token['volume_h24'])}`\n"
-        f"[View on Birdeye]({base_url})"
-    )
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        data={
-            "chat_id": TELEGRAM_ID,
-            "text": msg,
-            "parse_mode": "Markdown"
-        }
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="✅ Bot is live. Webhook setup complete. God Mode+++++ active."
     )
 
-def run_sniper_loop():
-    scanned = set()
-    while True:
-        tokens = fetch_top_sol_tokens()
-        for token in tokens:
-            try:
-                mc = token.get("market_cap", 0)
-                vol = token.get("volume_h24", 0)
-                buyers = token.get("txns_h24", 0)
+application.add_handler(CommandHandler("start", start))
 
-                if (
-                    token["address"] not in scanned and
-                    5000 <= vol <= 300000 and
-                    10000 <= mc <= 300000 and
-                    buyers >= 20
-                ):
-                    send_alpha_alert(token)
-                    scanned.add(token["address"])
-            except Exception as e:
-                logging.error(f"Failed during scan loop: {e}")
-        time.sleep(10)
+# Webhook route
+@app.post("/")
+async def telegram_webhook(req: Request):
+    data = await req.json()
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return {"ok": True}
 
-# --- Launch Bot + Sniper ---
-app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
-app_bot.add_handler(CommandHandler("start", start))
+# On startup: set Telegram webhook
+@app.on_event("startup")
+async def on_startup():
+    await application.bot.set_webhook(url=WEBHOOK_URL)
+    print("✅ Webhook set to:", WEBHOOK_URL)
 
-# Run sniper in background
-threading.Thread(target=run_sniper_loop).start()
-
-# Start bot
-print("🤖 Telegram bot running...")
-app_bot.run_polling()
+# Run app with uvicorn
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT)
