@@ -8,12 +8,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 app = Flask(__name__)
 
+# ENV VARS
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
+print(f"[DEBUG] Loaded BOT_TOKEN: {BOT_TOKEN}")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 BIRDEYE_API = os.getenv("BIRDEYE_API")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
+# TELEGRAM
 bot = Bot(BOT_TOKEN)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -81,8 +83,10 @@ def track_tokens():
 
                 if is_alpha(coin):
                     text, address = alert_msg(coin)
-                    btns = InlineKeyboardMarkup([[InlineKeyboardButton("IN 🔍", callback_data=f"in:{address}"),
-                                                  InlineKeyboardButton("OUT 💸", callback_data=f"out:{address}")]])
+                    btns = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("IN 🔍", callback_data=f"in:{address}"),
+                         InlineKeyboardButton("OUT 💸", callback_data=f"out:{address}")]
+                    ])
                     bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=btns)
                     seen_tokens.add(addr)
                 else:
@@ -95,7 +99,7 @@ def track_tokens():
             print(f"Error tracking: {e}")
         time.sleep(10)
 
-### FIXED WEBHOOK ROUTE ###
+### WEBHOOK ROUTES ###
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
@@ -113,6 +117,7 @@ application.add_handler(CommandHandler("in", handle_text))
 application.add_handler(CommandHandler("out", handle_text))
 application.add_handler(CommandHandler("watch", handle_text))
 
+# Start coin tracking in background
 t = threading.Thread(target=track_tokens)
 t.start()
 
