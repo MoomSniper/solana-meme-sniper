@@ -88,5 +88,7 @@ def track_coins():
 t = threading.Thread(target=track_coins)
 t.start()
 
+send_alert("🚀 Sniper Bot deployed and monitoring new alpha coins.")
+
 print("🚀 Sniper bot running in GOD MODE +++++")
 bot.infinity_polling()
