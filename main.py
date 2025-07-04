@@ -1,44 +1,46 @@
 import os
-import logging
-from fastapi import FastAPI, Request
+import asyncio
 from telegram import Update
-from telegram.ext import Application, ApplicationBuilder, ContextTypes, CommandHandler
+from telegram.ext import (
+    ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+)
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+BOT_TOKEN = os.getenv("BOT_TOKEN") or "7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo"
+USER_ID = int(os.getenv("USER_ID") or 6881063420)
 
-# ENV VARS
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g. https://your-app-name.onrender.com
-PORT = int(os.getenv("PORT", 10000))
+# Your sniper logic (placeholder for now)
+async def scan_for_alpha():
+    while True:
+        # Example: simulate alpha alert
+        await asyncio.sleep(10)  # Replace with actual Birdeye/WebSocket call
+        await app.bot.send_message(chat_id=USER_ID, text="🚀 New Alpha Detected!")
 
-# Telegram app init
-application: Application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-# Handlers
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot is live and webhook works.")
+    await update.message.reply_text("✅ Bot is active and scanning.")
 
-application.add_handler(CommandHandler("start", start))
+# 'in' and 'out' triggers
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower()
+    if text == "in":
+        await update.message.reply_text("📍 Tracking this coin now.")
+    elif text == "out":
+        await update.message.reply_text("❌ Stopped tracking.")
+    else:
+        await update.message.reply_text("🤖 Unknown command. Use /start, in, or out.")
 
-# FastAPI app
-app = FastAPI()
+# Build app
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-@app.on_event("startup")
-async def startup():
-    webhook_url = f"{WEBHOOK_URL}/webhook"
-    await application.bot.set_webhook(url=webhook_url)
-    logger.info(f"Webhook set to {webhook_url}")
+# Run everything
+async def main():
+    await app.initialize()
+    await app.start()
+    asyncio.create_task(scan_for_alpha())
+    await app.updater.start_polling()
+    await app.updater.idle()
 
-@app.post("/webhook")
-async def telegram_webhook(req: Request):
-    data = await req.json()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return {"status": "ok"}
-
-# Uvicorn runs this if main
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
+    asyncio.run(main())
