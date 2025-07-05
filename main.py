@@ -40,14 +40,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === Flask route to receive Telegram webhooks ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+
+    async def handle_update():
+        await application.initialize()
+        await application.process_update(update)
+
     try:
-       update = Update.de_json(request.get_json(force=True), application.bot)
-async def handle():
-    await application.initialize()
-    await application.process_update(update)
-asyncio.run(handle())
+        asyncio.run(handle_update())
     except Exception as e:
         logger.error(f"Exception in telegram_webhook: {e}")
+
     return "ok"
 
 # === Main async setup ===
