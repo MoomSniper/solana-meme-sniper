@@ -7,14 +7,11 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters
 )
-from dotenv import load_dotenv
-from threading import Thread
 
 # Load environment variables
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID"))
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+TELEGRAM_USER_ID = int(os.environ["TELEGRAM_USER_ID"])
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
