@@ -64,5 +64,4 @@ async def set_webhook():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(set_webhook())
-    application.run_polling = False
     app.run(host="0.0.0.0", port=PORT)
