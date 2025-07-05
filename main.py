@@ -41,14 +41,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     try:
-        update = Update.de_json(request.get_json(force=True), application.bot)
-
-        # Reuse the running loop instead of creating a new one
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(application.initialize())
-        loop.run_until_complete(application.process_update(update))
-        loop.close()
+        if request.method == "POST":
+            update = Update.de_json(request.get_json(force=True), application.bot)
+            asyncio.run(application.process_update(update))
+        return "ok"
+    except Exception as e:
+        logger.error(f"Exception in telegram_webhook: {e}")
+        return "error"
 
     except Exception as e:
         logger.error(f"Exception in telegram_webhook: {e}")
