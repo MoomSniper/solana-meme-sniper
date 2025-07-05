@@ -27,8 +27,7 @@ async def webhook() -> str:
 
 async def main():
     await application.initialize()
-    await application.bot.delete_webhook()
-    await application.bot.set_webhook(url=WEBHOOK_URL)
+    await application.bot.set_webhook(WEBHOOK_URL)
     logger.info(f"✅ Webhook set: {WEBHOOK_URL}")
 
     # Start background sniper
