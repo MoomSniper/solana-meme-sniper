@@ -1,3 +1,8 @@
+import os
+import httpx
+import asyncio
+import logging  # ← Add this line
+
 async def monitor_market(bot):
     logging.info("🧠 Sniper loop: scanning live token list...")
 
