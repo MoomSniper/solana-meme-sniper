@@ -27,9 +27,10 @@ application.add_handler(CommandHandler("start", start))
 # Webhook route
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 async def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    await webhook_handler.handle_update(update, application)
-    return "OK", 200
+    if request.method == "POST":
+        await application.update_queue.put(Update.de_json(await request.get_json(), application.bot))
+        return "!", 200
+    return "Not allowed", 405
 
 # Main app route
 @app.route("/", methods=["GET"])
