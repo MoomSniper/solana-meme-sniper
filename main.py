@@ -38,4 +38,4 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "in":
         await update.message.reply_text("🟢 You’re IN. Doing deeper scan on this one.")
     elif text == "out":
-        await update.message.reply_text("
+        await update.message.reply_text("Your message here.")
