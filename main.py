@@ -5,6 +5,8 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+from sniper import monitor_market  # ✅ integrated safely
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +51,10 @@ if __name__ == "__main__":
             )
         await application.initialize()
         logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
+
+        # ✅ Launch sniper market scanner
+        asyncio.create_task(monitor_market(application.bot))
+
         app.run(host="0.0.0.0", port=PORT)
 
     asyncio.run(setup())
