@@ -1,32 +1,17 @@
-import os
-import httpx
-import asyncio
-import logging  # ← Add this line
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-logging.info(f"TELEGRAM_ID loaded: {TELEGRAM_ID}")
-
-async def monitor_market(bot):
-    logging.info("🧠 Sniper loop: scanning live token list...")
-
-    try:
-        tokens = await fetch_token_list()
-        logging.info(f"📊 Fetched {len(tokens)} tokens from Birdeye.")
-    except Exception as e:
-        await bot.send_message(chat_id=TELEGRAM_ID, text=f"❌ Error fetching token list: {e}")
-        return
-
-    if not tokens:
-        await bot.send_message(chat_id=TELEGRAM_ID, text="⚠️ No tokens found. Token list is empty.")
-        return
-
-    for token in tokens:
-        try:
-            msg = f"""
-📡 LIVE TOKEN FOUND
-Name: {token.get('name', 'N/A')}
-Symbol: {token.get('symbol', 'N/A')}
-Chart: https://birdeye.so/token/{token.get('address')}
-"""
-            await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
-        except Exception as e:
-            logging.error(f"Error sending message for token: {e}")
+==> Deploying...
+==> Running 'python main.py'
+ * Serving Flask app 'main'
+ * Debug mode: off
+INFO:werkzeug:WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://10.214.31.6:10000
+INFO:werkzeug:Press CTRL+C to quit
+==> Running 'python main.py'
+ * Serving Flask app 'main'
+ * Debug mode: off
+INFO:werkzeug:WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://10.214.31.6:10000
+INFO:werkzeug:Press CTRL+C to quit
