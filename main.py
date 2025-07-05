@@ -2,7 +2,7 @@ import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-from sniper import sniper_loop  # Your alpha logic
+from sniper import sniper_loop
 import logging
 import os
 
@@ -28,11 +28,10 @@ application.add_handler(CommandHandler("start", start))
 
 async def run():
     await application.initialize()
-    application.create_task(sniper_loop())  # ← This was missing
+    application.create_task(sniper_loop())  # ← This starts scanning in background
     await application.start()
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    await application.updater.start_polling()  # Optional: remove if using webhook only
-    await application.updater.idle()
+    # ❌ DO NOT add polling here. Webhook-only mode.
 
 if __name__ == "__main__":
     asyncio.run(run())
