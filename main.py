@@ -1,155 +1,57 @@
 import os
-import time
-import threading
-import requests
-import asyncio
-from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ContextTypes, filters
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+)
+from dotenv import load_dotenv
+
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Env variables
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
-# Flask
-app = Flask(__name__)
-application = ApplicationBuilder().token(BOT_TOKEN).build()
-seen_tokens = set()
-watchlist = []
-
-### HANDLERS ###
+# Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper bot ONLINE. Send 'in', 'out', or 'watch'.")
+    await update.message.reply_text("🚀 Bot is online. Ready to snipe.")
 
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Handle user text messages
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [
+            InlineKeyboardButton("👀 Watch", callback_data="watch"),
+            InlineKeyboardButton("✅ In", callback_data="in"),
+            InlineKeyboardButton("❌ Out", callback_data="out"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Select an action for this coin:", reply_markup=reply_markup)
+
+# Handle button presses
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    action, address = query.data.split(":")
 
-    if action == "in":
-        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"🔍 Deep scan on {address} starting now...")
-    elif action == "out":
-        await context.bot.send_message(chat_id=TELEGRAM_ID, text=f"📈 Done tracking {address}. Closing position.")
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    txt = update.message.text.lower()
-    if txt == "in":
-        await update.message.reply_text("🧠 Deep tracking ON")
-    elif txt == "out":
-        await update.message.reply_text("❌ Tracking OFF")
-    elif txt == "watch":
-        await update.message.reply_text("👀 Watching coins that are heating up...")
-
-### ALERTING ###
-def is_alpha(coin):
-    try:
-        mc = coin['fdv_usd']
-        vol = coin['volume_1h_quote']
-        buyers = coin['txns']['buys']
-        has_socials = coin['dex_info'].get('telegram') and coin['dex_info'].get('twitter')
-        return mc and mc < 300000 and vol > 5000 and buyers >= 15 and has_socials
-    except:
-        return False
-
-def alert_msg(coin):
-    name = coin['base_token']['name']
-    symbol = coin['base_token']['symbol']
-    addr = coin['address']
-    mc = round(coin['fdv_usd'])
-    vol = round(coin['volume_1h_quote'])
-    return f"🔥 <b>{name}</b> (${symbol})\nMarket Cap: ${mc}\nVolume: ${vol}\n<a href='https://birdeye.so/token/{addr}?chain=solana'>Birdeye</a>", addr
-
-def track_tokens():
-    while True:
-        try:
-            res = requests.get("https://public-api.birdeye.so/public/tokenlist?sort=volume_1h&order=desc&limit=50&chain=solana",
-                               headers={"X-API-KEY": BIRDEYE_API})
-            tokens = res.json().get("data", [])
-
-            for coin in tokens:
-                addr = coin.get("address")
-                if not addr or addr in seen_tokens:
-                    continue
-
-                if is_alpha(coin):
-                    text, address = alert_msg(coin)
-                    btns = InlineKeyboardMarkup([[InlineKeyboardButton("IN 🔍", callback_data=f"in:{address}"),
-                                                  InlineKeyboardButton("OUT 💸", callback_data=f"out:{address}")]])
-                    asyncio.run(application.bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="HTML", reply_markup=btns))
-                    seen_tokens.add(addr)
-                else:
-                    vol = coin.get('volume_1h_quote', 0)
-                    buyers = coin.get('txns', {}).get('buys', 0)
-                    if vol > 3500 and buyers >= 10 and addr not in watchlist:
-                        asyncio.run(application.bot.send_message(chat_id=TELEGRAM_ID, text=f"⏳ Potential: {coin['base_token']['name']} ${coin['base_token']['symbol']} is heating up..."))
-                        watchlist.append(addr)
-        except Exception as e:
-            print(f"Error tracking: {e}")
-        time.sleep(10)
-
-### FLASK ROUTES ###
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
-    asyncio.run(application.process_update(update))
-    return "ok"
-
-@app.route("/")
-def index():
-    return "🚀 Sniper bot running."
-
-### INIT ###
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CallbackQueryHandler(handle_button))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    choice = query.data
+    if choice == "watch":
+        await query.edit_message_text("🔍 Watching coin...")
+    elif choice == "in":
+        await query.edit_message_text("🟢 Marked as IN.")
+    elif choice == "out":
+        await query.edit_message_text("🔴 Marked as OUT.")
 
 if __name__ == "__main__":
-    async def main():
-        await application.initialize()
-        await application.bot.delete_webhook()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-        url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
-        try:
-            res = await application.bot.set_webhook(url=url)
-            print(f"✅ Webhook set to: {url} — Telegram response: {res}")
-        except Exception as e:
-            print(f"❌ Failed to set webhook: {e}")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(CallbackQueryHandler(handle_callback))
 
-        await application.start()
-        threading.Thread(target=track_tokens).start()
-        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-### INIT ###
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CallbackQueryHandler(handle_button))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-if __name__ == "__main__":
-    import os
-
-    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-    PORT = int(os.getenv("PORT", 10000))
-
-    # Set webhook + run Flask + bot together using PTB built-in webhook runner
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
-    )
-
-      url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
-    try:
-        res = await application.bot.set_webhook(url=url)
-        print(f"✅ Webhook set to: {url} – Telegram response: {res}")
-    except Exception as e:
-        print(f"❌ Failed to set webhook: {e}")
-        try:
-            res = await application.bot.set_webhook(url=url)
-            print(f"✅ Retried: Webhook set to: {url} – Telegram response: {res}")
-        except Exception as e:
-            print(f"❌ Final fail to set webhook: {e}")
+    app.run_polling()
