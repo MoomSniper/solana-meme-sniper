@@ -1,16 +1,15 @@
-import os
-import json
-import logging
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-import asyncio
+from sniper import sniper_loop  # Your alpha logic
+import logging
+import os
 
-# Env
 BOT_TOKEN = os.environ['BOT_TOKEN']
-TELEGRAM_ID = int(os.environ['TELEGRAM_ID'])
+WEBHOOK_URL = os.environ['WEBHOOK_URL']
+PORT = int(os.environ.get('PORT', 10000))
 
-# Setup
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -18,29 +17,22 @@ application = Application.builder().token(BOT_TOKEN).build()
 
 @app.post(f"/{BOT_TOKEN}")
 async def webhook() -> str:
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
+    update = Update.de_json(request.get_json(force=True), application.bot)
     await application.process_update(update)
     return "OK"
 
-# Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != TELEGRAM_ID:
-        return
     await update.message.reply_text("🚀 Sniper Bot is active and listening.")
 
-# Register
 application.add_handler(CommandHandler("start", start))
 
-# Start webhook and polling
-async def main():
+async def run():
     await application.initialize()
+    application.create_task(sniper_loop())  # ← This was missing
     await application.start()
-    await application.updater.start_polling()  # required for command registration
-    await application.bot.set_webhook(url=os.environ['WEBHOOK_URL'])
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    await application.updater.start_polling()  # Optional: remove if using webhook only
+    await application.updater.idle()
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main())
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    asyncio.run(run())
