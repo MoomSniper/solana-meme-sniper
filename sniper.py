@@ -95,15 +95,37 @@ Chart: https://birdeye.so/token/{token_address}
         await asyncio.sleep(60)
 
 async def monitor_market(bot):
-    logging.info("🧠 Sniper loop: scanning live token list...")
+logging.info("🧠 Sniper loop: scanning live token list...")
 
+while True:
     try:
         tokens = await fetch_token_list()
         logging.info(f"📊 Fetched {len(tokens)} tokens from Birdeye.")
     except Exception as e:
         await bot.send_message(chat_id=TELEGRAM_ID, text=f"❌ Error fetching token list: {e}")
-        return
+        await asyncio.sleep(10)
+        continue
 
-    if not tokens or len(tokens) == 0:
+    if not tokens:
         await bot.send_message(chat_id=TELEGRAM_ID, text="⚠️ No tokens found. Token list is empty.")
-        return
+        await asyncio.sleep(10)
+        continue
+
+    # TEMP: send a dummy message to prove scanning works
+    test_token = tokens[0]
+    msg = f"""
+🧪 TESTING LIVE COIN SCAN
+Name: {test_token['name']}
+Symbol: {test_token['symbol']}
+FDV: ${test_token['fdv']:,}
+Chart: https://birdeye.so/token/{test_token['address']}
+"""
+    await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+
+    for token in tokens:
+        try:
+            await analyze_token(bot, token)
+        except Exception as e:
+            logging.error(f"Error analyzing token: {e}")
+
+    await asyncio.sleep(10)
