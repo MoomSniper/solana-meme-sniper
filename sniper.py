@@ -1,73 +1,53 @@
-import os
 import asyncio
+import logging
+import os
 import httpx
-import time
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
-TELEGRAM_ID = int(os.environ['TELEGRAM_ID'])
+TELEGRAM_ID = os.environ['TELEGRAM_ID']
 BIRDEYE_API = os.environ['BIRDEYE_API']
 
-HEADERS = {"X-API-KEY": BIRDEYE_API}
-BASE_URL = "https://public-api.birdeye.so/public/tokenlist?sort_by=volume_1h&sort_type=desc&dex=JUPITER&chain=solana"
+logging.basicConfig(level=logging.INFO)
 
-last_alerted = set()
-
-async def send_telegram_message(text: str):
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_ID, "text": text, "parse_mode": "HTML"}
-        )
-
-def passes_filters(token):
+async def send_telegram_message(text):
     try:
-        mc = float(token.get("market_cap", 0))
-        vol = float(token.get("volume_1h", 0))
-        buyers = int(token.get("tx_count_1h", 0))
-        symbol = token.get("symbol", "")
-
-        return (
-            mc < 300000
-            and vol > 5000
-            and buyers >= 15
-            and symbol not in last_alerted
-        )
-    except:
-        return False
-
-async def fetch_tokens():
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(BASE_URL, headers=HEADERS)
-        return resp.json().get("data", [])
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": TELEGRAM_ID, "text": text}
+            )
+    except Exception as e:
+        logging.error(f"❌ Failed to send Telegram message: {e}")
 
 async def sniper_loop():
     while True:
         try:
-            tokens = await fetch_tokens()
-            for token in tokens:
-                if passes_filters(token):
-                    symbol = token["symbol"]
-                    name = token["name"]
-                    mc = token.get("market_cap", 0)
-                    vol = token.get("volume_1h", 0)
-                    buyers = token.get("tx_count_1h", 0)
-                    address = token["address"]
+            logging.info("🔍 Scanning for coins...")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://public-api.birdeye.so/public/token/price?sort=volume_1h_usd&order=desc",
+                    headers={"X-API-KEY": BIRDEYE_API}
+                )
+                data = response.json().get("data", [])
 
-                    msg = (
-                        f"<b>🚨 ALPHA FOUND</b>\n"
-                        f"<b>Name:</b> {name} ({symbol})\n"
-                        f"<b>Market Cap:</b> ${int(mc):,}\n"
-                        f"<b>1h Volume:</b> ${int(vol):,}\n"
-                        f"<b>1h Buyers:</b> {buyers}\n"
-                        f"<b>Chart:</b> https://birdeye.so/token/{address}?chain=solana"
-                    )
-                    await send_telegram_message(msg)
-                    last_alerted.add(symbol)
+            if not data:
+                logging.warning("⚠️ No tokens found or Birdeye limit hit.")
+            else:
+                for token in data:
+                    symbol = token.get("symbol", "")
+                    volume = token.get("volume_1h_usd", 0)
+                    market_cap = token.get("market_cap", 0)
 
-            await asyncio.sleep(6)
+                    if volume > 5000 and market_cap and market_cap < 300_000:
+                        msg = (
+                            f"🚀 Alpha Coin Found: {symbol}\n"
+                            f"MC: ${int(market_cap):,}\n"
+                            f"1h Volume: ${int(volume):,}"
+                        )
+                        await send_telegram_message(msg)
+                        break  # only send 1 at a time
+
         except Exception as e:
-            print(f"Error in sniper_loop: {e}")
-            await asyncio.sleep(10)
+            logging.error(f"❌ Error in sniper_loop: {e}")
 
-if __name__ == "__main__":
-    asyncio.run(sniper_loop())
+        await asyncio.sleep(30)  # quiet 30s interval to respect free tier
