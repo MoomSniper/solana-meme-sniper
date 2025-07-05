@@ -55,6 +55,7 @@ if __name__ == "__main__":
         # ✅ Launch sniper market scanner
         asyncio.create_task(monitor_market(application.bot))
 
+        await application.bot.send_message(chat_id=TELEGRAM_ID, text="✅ Sniper Bot is live and scanning the market.")
         app.run(host="0.0.0.0", port=PORT)
 
     asyncio.run(setup())
