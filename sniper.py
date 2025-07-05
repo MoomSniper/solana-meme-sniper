@@ -94,28 +94,28 @@ Chart: https://birdeye.so/token/{token_address}
         await bot.send_message(chat_id=TELEGRAM_ID, text=summary)
         await asyncio.sleep(60)
 
-async def analyze_token(bot, token):
-    global active_coin
-    if active_coin: return  # already tracking one
+async def monitor_market(bot):
+    logging.info("🧠 Sniper loop: scanning live token list...")
+    tokens = await fetch_token_list()
 
-    trades = await fetch_trades(token["address"])
-    if not trades: return
-
-    buyers = sum(1 for t in trades if t["side"] == "buy")
-    sellers = sum(1 for t in trades if t["side"] == "sell")
-    volume = sum(float(t["amount"]) for t in trades)
-    price = float(trades[-1]["price"]) if trades else 0
-
-    active_coin = token["address"]
-    msg = f"""
-🔍 LIVE COIN TEST
+    # Just pick the first coin to prove it's working
+    if tokens:
+        token = tokens[0]
+        msg = f"""
+🔍 TESTING LIVE COIN SCAN
 Name: {token['name']}
 Symbol: {token['symbol']}
-Buyers: {buyers} | Sellers: {sellers}
-1H Volume: ${volume:,.2f}
-Price: ${price}
+FDV: ${token['fdv']:,.0f}
 Chart: https://birdeye.so/token/{token['address']}
 """
-    await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
-    await asyncio.sleep(10)
-    active_coin = None  # reset so it keeps cycling
+        await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+
+    # Resume normal alpha scanning after test
+    while True:
+        tokens = await fetch_token_list()
+        for token in tokens:
+            try:
+                await analyze_token(bot, token)
+            except Exception as e:
+                logging.error(f"Error analyzing token: {e}")
+        await asyncio.sleep(10)
