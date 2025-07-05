@@ -1,78 +1,73 @@
 import os
-import httpx
 import asyncio
-import logging
-from datetime import datetime, timedelta
+import httpx
+import time
 
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-headers = {"X-API-KEY": BIRDEYE_API}
+BOT_TOKEN = os.environ['BOT_TOKEN']
+TELEGRAM_ID = int(os.environ['TELEGRAM_ID'])
+BIRDEYE_API = os.environ['BIRDEYE_API']
 
-tracked_tokens = {}  # key: address, value: deep scan status
+HEADERS = {"X-API-KEY": BIRDEYE_API}
+BASE_URL = "https://public-api.birdeye.so/public/tokenlist?sort_by=volume_1h&sort_type=desc&dex=JUPITER&chain=solana"
 
-logging.basicConfig(level=logging.INFO)
+last_alerted = set()
 
-async def fetch_token_list():
-    url = "https://public-api.birdeye.so/defi/tokenlist?limit=50&offset=0"
+async def send_telegram_message(text: str):
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers)
-            data = response.json()
-            return data.get("data", {}).get("tokens", [])
-        except Exception as e:
-            logging.error(f"❌ Error fetching token list: {e}")
-            return []
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": TELEGRAM_ID, "text": text, "parse_mode": "HTML"}
+        )
 
-async def deep_research(token, bot):
-    # Simulated deep scan logic
-    await asyncio.sleep(90)
-    logging.info(f"🔬 Running deep research on {token.get('symbol', 'N/A')}")
-    msg = f"""
-🧠 DEEP RESEARCH MODE ENGAGED
+def passes_filters(token):
+    try:
+        mc = float(token.get("market_cap", 0))
+        vol = float(token.get("volume_1h", 0))
+        buyers = int(token.get("tx_count_1h", 0))
+        symbol = token.get("symbol", "")
 
-Token: {token.get('name')}
-Symbol: {token.get('symbol')}
-Contract: {token.get('address')}
+        return (
+            mc < 300000
+            and vol > 5000
+            and buyers >= 15
+            and symbol not in last_alerted
+        )
+    except:
+        return False
 
-📊 Alpha Score: 91/100
-📈 Projected Multiplier: 5x–12x
-🧠 Entry Confidence: 93.4%
-🔗 Chart: https://birdeye.so/token/{token.get('address')}
+async def fetch_tokens():
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(BASE_URL, headers=HEADERS)
+        return resp.json().get("data", [])
 
-Recommendation: 🔥 HOLD — Volume steady, wallets still entering.
-"""
-    await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
-
-async def monitor_market(bot):
+async def sniper_loop():
     while True:
-        logging.info("🧠 Sniper loop: scanning live token list...")
-
-        tokens = await fetch_token_list()
-        logging.info(f"📊 Fetched {len(tokens)} tokens from Birdeye.")
-
-        if not tokens:
-            await bot.send_message(chat_id=TELEGRAM_ID, text="⚠️ No tokens found.")
-        else:
+        try:
+            tokens = await fetch_tokens()
             for token in tokens:
-                token_address = token.get("address")
-                if token_address not in tracked_tokens:
-                    try:
-                        msg = f"""
-📡 LIVE TOKEN FOUND
-Name: {token.get('name', 'N/A')}
-Symbol: {token.get('symbol', 'N/A')}
-Chart: https://birdeye.so/token/{token.get('address')}
-"""
-                        await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
-                        tracked_tokens[token_address] = {
-                            "notified_at": datetime.utcnow(),
-                            "deep_researched": False
-                        }
+                if passes_filters(token):
+                    symbol = token["symbol"]
+                    name = token["name"]
+                    mc = token.get("market_cap", 0)
+                    vol = token.get("volume_1h", 0)
+                    buyers = token.get("tx_count_1h", 0)
+                    address = token["address"]
 
-                        # Schedule deep scan after 90s
-                        asyncio.create_task(deep_research(token, bot))
-                        await asyncio.sleep(0.75)  # throttle
-                    except Exception as e:
-                        logging.error(f"❌ Error sending message for token: {e}")
+                    msg = (
+                        f"<b>🚨 ALPHA FOUND</b>\n"
+                        f"<b>Name:</b> {name} ({symbol})\n"
+                        f"<b>Market Cap:</b> ${int(mc):,}\n"
+                        f"<b>1h Volume:</b> ${int(vol):,}\n"
+                        f"<b>1h Buyers:</b> {buyers}\n"
+                        f"<b>Chart:</b> https://birdeye.so/token/{address}?chain=solana"
+                    )
+                    await send_telegram_message(msg)
+                    last_alerted.add(symbol)
 
-        await asyncio.sleep(60)
+            await asyncio.sleep(6)
+        except Exception as e:
+            print(f"Error in sniper_loop: {e}")
+            await asyncio.sleep(10)
+
+if __name__ == "__main__":
+    asyncio.run(sniper_loop())
