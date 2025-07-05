@@ -130,9 +130,17 @@ application.add_handler(CallbackQueryHandler(handle_button))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
 if __name__ == "__main__":
-    async def main():
-        await application.initialize()
-        await application.bot.delete_webhook()
+    import os
+
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    PORT = int(os.getenv("PORT", 10000))
+
+    # Set webhook + run Flask + bot together using PTB built-in webhook runner
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
+    )
 
         url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
         try:
@@ -140,13 +148,3 @@ if __name__ == "__main__":
             print(f"✅ Webhook set to: {url} — Telegram response: {res}")
         except Exception as e:
             print(f"❌ Failed to set webhook: {e}")
-
-        await application.start()
-        threading.Thread(target=track_tokens).start()
-        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "closed" not in str(e):
-            raise
