@@ -42,7 +42,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    loop = asyncio.get_event_loop()
+   loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
     loop.create_task(application.process_update(update))
     return "OK"
 
