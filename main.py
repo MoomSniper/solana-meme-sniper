@@ -1,73 +1,95 @@
-import os
 import logging
 import asyncio
-import httpx
+import os
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+import httpx
+
+# Load environment variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 10000))
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Env variables
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
 # Flask app
 app = Flask(__name__)
 
-# Telegram app
-application = Application.builder().token(BOT_TOKEN).build()
+# Telegram bot app
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# /start command
+# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    logger.info(f"/start by {user.id} ({user.username})")
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Sniper system active. Awaiting alpha...")
+    logger.info(f"Start command triggered by {update.effective_user.id}")
+    await update.message.reply_text("🚀 Sniper Bot Activated. Type /watch to see radar targets.")
 
-# Watch command (GodRadar)
+# Watch command
 async def watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟡 Radar activated.\nMonitoring high-potential coins nearing sniper criteria...")
+    logger.info(f"/watch used by {update.effective_user.id}")
+    await update.message.reply_text("🧠 Radar scanning... No targets right now. (This will show hot coins approaching alpha.)")
 
-# Register handlers
+# Callback handler for inline buttons
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "yes":
+        await query.edit_message_text("🧠 Initiating deeper alpha scan...")
+        await context.bot.send_message(chat_id=query.from_user.id, text="🔍 Scanning this coin harder than your ex’s Insta.")
+    elif query.data == "no":
+        await query.edit_message_text("❌ Cancelled. No problem.")
+
+# Custom "in" message
+async def in_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"'in' called by {update.effective_user.id}")
+    keyboard = [
+        [
+            InlineKeyboardButton("Yes 🔥", callback_data="yes"),
+            InlineKeyboardButton("No ❌", callback_data="no"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("🧠 Run full sniper scan on this coin?", reply_markup=reply_markup)
+
+# Add handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("watch", watch))
+application.add_handler(CallbackQueryHandler(button_callback))
+application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"\bin\b"), in_handler))
 
-# Flask route to handle webhook
+# Webhook route (sync for Flask compatibility)
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-async def telegram_webhook():
+def webhook():
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, application.bot)
-        await application.process_update(update)
-        return "OK"
+        asyncio.run(application.process_update(update))
     except Exception as e:
-        logger.error(f"Exception in telegram_webhook: {e}")
-        return "Webhook error"
+        logger.error(f"Webhook error: {e}")
+    return "ok"
 
 # Set webhook on startup
 async def set_webhook():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    payload = {"url": f"{WEBHOOK_URL}/{BOT_TOKEN}"}
     async with httpx.AsyncClient() as client:
-        webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-        res = await client.post(url, json={"url": webhook_url})
-        if res.status_code == 200:
-            logger.info(f"✅ Webhook set: {webhook_url} — Telegram response: {res.json()['ok']}")
+        response = await client.post(url, json=payload)
+        if response.status_code == 200:
+            logger.info(f"✅ Webhook set: {payload['url']} — Telegram response: {response.json().get('ok')}")
         else:
-            logger.error(f"❌ Failed to set webhook: {res.text}")
+            logger.error(f"❌ Failed to set webhook: {response.text}")
 
-# Boot everything
-async def run():
-    await application.initialize()
-    await application.bot.delete_webhook(drop_pending_updates=True)
-    await set_webhook()
-    await application.start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
+# Startup logic
 if __name__ == "__main__":
-    try:
-        asyncio.run(run())
-    except RuntimeError as e:
-        logger.error(f"Event loop error: {e}")
+    asyncio.run(set_webhook())
+    app.run(host="0.0.0.0", port=PORT)
