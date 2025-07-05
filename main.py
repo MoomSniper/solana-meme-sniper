@@ -1,80 +1,68 @@
-import logging
 import os
-import asyncio
+import logging
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (Application, CommandHandler, ContextTypes,
-                          MessageHandler, filters, CallbackQueryHandler)
-import httpx
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# ENV variables
+# Load environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("PORT", 10000))
 
-# Flask app setup
+# Flask app
 app = Flask(__name__)
 
-# Telegram Application
+# Initialize telegram application with webhook settings
 application = Application.builder().token(BOT_TOKEN).build()
 
-# /start command
+# Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="🚀 God Mode Meme Sniper Activated.")
+    await update.message.reply_text("🚀 God Mode Meme Sniper Activated.")
+    logger.info(f"/start called by {update.effective_user.id}")
 
-# Watch command
-async def watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="🟡 Radar scanning… Targets nearing alpha trigger.")
+# Message handlers for text commands
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().lower()
+    user_id = update.effective_user.id
+    logger.info(f"Received message from {user_id}: {text}")
 
-# in/out commands
-async def call_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="🧠 Running deep scan on this one… sit tight.")
+    if text == "watch":
+        await update.message.reply_text("✅ Watching radar-ready coins...")
+    elif text == "in":
+        await update.message.reply_text("🟢 You’re IN. Doing deeper scan on this one.")
+    elif text == "out":
+        await update.message.reply_text("🔴 Out. Removing from radar.")
+    else:
+        await update.message.reply_text("🤖 Unrecognized command. Use: watch, in, or out")
 
-async def call_out(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="📉 Marked as exit candidate. Pull profits or trail stop.")
-
-# Telegram command registration
+# Add handlers to app
 application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("watch", watch))
-application.add_handler(CommandHandler("in", call_in))
-application.add_handler(CommandHandler("out", call_out))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-# Webhook endpoint
+# Flask webhook route
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
+def telegram_webhook():
     try:
-        data = request.get_json(force=True)
-        update = Update.de_json(data, application.bot)
-        asyncio.run(run_update(update))
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        application.update_queue.put_nowait(update)
+        return "ok"
     except Exception as e:
         logger.error(f"Webhook error: {e}")
-    return "ok"
+        return "error", 500
 
-async def run_update(update: Update):
-    await application.initialize()
-    await application.process_update(update)
-
-# Set webhook on startup
+# Set webhook before running
 async def set_webhook():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-    webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, json={"url": webhook_url})
-        if r.status_code == 200:
-            logger.info(f"✅ Webhook set: {webhook_url} — Telegram response: {r.json()['ok']}")
-        else:
-            logger.error(f"❌ Failed to set webhook: {r.text}")
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
 
-# Startup
 if __name__ == "__main__":
-    try:
-        asyncio.run(set_webhook())
-    except Exception as e:
-        logger.error(f"Webhook setup failed: {e}")
-
+    import asyncio
+    asyncio.run(set_webhook())
+    application.run_polling = False  # just to silence unused warning
     app.run(host="0.0.0.0", port=PORT)
