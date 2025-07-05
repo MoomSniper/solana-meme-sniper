@@ -61,6 +61,6 @@ if __name__ == "__main__":
         threading.Thread(target=run_flask, daemon=True).start()
 
         # Start Sniper Loop
-        await monitor_market(application.bot)
+        await monitor_market()
 
     asyncio.run(main())
