@@ -3,7 +3,6 @@ import logging
 from flask import Flask, request
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes
-from telegram.ext.webhook import WebhookHandler
 
 # Logging
 logging.basicConfig(level=logging.INFO)
