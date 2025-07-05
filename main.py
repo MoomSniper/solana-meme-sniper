@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from threading import Thread
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -8,64 +9,64 @@ from telegram.ext import (
     ContextTypes, filters
 )
 
-# Load environment variables
+# === Load environment variables ===
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
-TELEGRAM_ID = int(os.environ["TELEGRAM_ID"])
+TELEGRAM_USER_ID = int(os.environ["TELEGRAM_USER_ID"])
 
-# Logging setup
+# === Logging ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app for webhook
+# === Flask App ===
 app = Flask(__name__)
 application = None
 
 # === Telegram Handlers ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 Sniper bot is locked in and scanning alpha. Buckle up.")
+    await update.message.reply_text("🔥 Sniper bot is locked in and scanning. Say 'watch' to heat up the radar.")
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
-    if text == "ping":
-        await update.message.reply_text("✅ Bot is alive and running.")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message.text.lower()
+
+    if msg == "watch":
+        await update.message.reply_text("👀 Watching coins that are heating up...")
+    elif msg == "in":
+        await update.message.reply_text("📈 Entering position. Bot tracking price action.")
+    elif msg == "out":
+        await update.message.reply_text("🚪 Exiting position. Profits (or damage) recorded.")
     else:
-        await update.message.reply_text("👀 Scanning... type 'ping' to check status.")
+        await update.message.reply_text("❓ Command not recognized. Try: watch, in, or out.")
 
-# === Alpha Scanner Placeholder ===
-async def scan_and_alert():
-    while True:
-        # Replace this with real sniper logic
-        # Example: fetch new coins, check filters, send alert
-        logger.info("Scanning for alpha coins...")
-        await asyncio.sleep(10)
+# === Flask route to receive Telegram webhooks ===
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    loop = asyncio.get_event_loop()
+    loop.create_task(application.process_update(update))
+    return "OK"
 
-# === Webhook Endpoint ===
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-async def webhook():
-    if request.method == "POST":
-        await application.update_queue.put(Update.de_json(request.get_json(force=True), application.bot))
-        return "ok"
-
-# === Runner ===
+# === Main async setup ===
 async def main():
     global application
-    application = ApplicationBuilder().token(BOT_TOKEN).concurrent_updates(True).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info("🚀 Webhook set and bot started.")
-
-    # Run alpha scanner in background
-    asyncio.create_task(scan_and_alert())
-
-# Start Flask and Telegram together
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
+    # Start Flask server in a separate thread
     Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    loop.run_forever()
+
+    # Delay to make sure Flask is up
+    await asyncio.sleep(2)
+
+    # Set Telegram webhook
+    url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    try:
+        res = await application.bot.set_webhook(url=url)
+        logger.info(f"✅ Webhook set: {url} — Telegram response: {res}")
+    except Exception as e:
+        logger.error(f"❌ Failed to set webhook: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
