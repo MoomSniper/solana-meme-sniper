@@ -21,15 +21,12 @@ app = Flask(__name__)
 application = Application.builder().token(BOT_TOKEN).build()
 
 # === Phase 2: /start and webhook ===
-# /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/start called by {update.effective_user.id}")
     await update.message.reply_text("🚀 God Mode Meme Sniper Activated.")
 
-# Add handler to telegram app
 application.add_handler(CommandHandler("start", start))
 
-# Webhook route
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     try:
@@ -39,3 +36,13 @@ def telegram_webhook():
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return "error", 500
+
+# === Phase 3: Set webhook + run Flask ===
+async def set_webhook():
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(set_webhook())
+    app.run(host="0.0.0.0", port=PORT)
