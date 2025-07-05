@@ -142,7 +142,12 @@ if __name__ == "__main__":
         webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
     )
 
-        url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+ url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+try:
+    res = await application.bot.set_webhook(url=url)
+    print(f"✅ Webhook set to: {url} – Telegram response: {res}")
+except Exception as e:
+    print(f"❌ Failed to set webhook: {e}")
         try:
             res = await application.bot.set_webhook(url=url)
             print(f"✅ Webhook set to: {url} — Telegram response: {res}")
