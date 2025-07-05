@@ -41,8 +41,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     try:
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        asyncio.run(application.process_update(update))
+       update = Update.de_json(request.get_json(force=True), application.bot)
+async def handle():
+    await application.initialize()
+    await application.process_update(update)
+asyncio.run(handle())
     except Exception as e:
         logger.error(f"Exception in telegram_webhook: {e}")
     return "ok"
