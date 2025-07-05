@@ -2,6 +2,7 @@ import os
 import httpx
 import asyncio
 import logging  # ← Add this line
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 
 async def monitor_market(bot):
     logging.info("🧠 Sniper loop: scanning live token list...")
