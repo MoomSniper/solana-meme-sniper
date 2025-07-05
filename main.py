@@ -55,8 +55,9 @@ def telegram_webhook():
         except Exception as e:
             print(f"Error handling update: {e}")
             logging.error(f"Exception in telegram_webhook: {e}")
-        return "ok"ror(f"Exception in telegram_webhook: {e}")
-        return "ok"
+      except Exception as e:
+    logging.error(f"Exception in telegram_webhook: {e}")
+    return "ok"
         
 # === Main async setup ===
 async def main():
