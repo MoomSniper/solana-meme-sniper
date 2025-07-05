@@ -58,6 +58,7 @@ def telegram_webhook():
 
 # Set webhook before running
 async def set_webhook():
+    await application.initialize()  # <<< THIS WAS MISSING
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
     logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
 
