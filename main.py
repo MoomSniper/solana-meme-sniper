@@ -1,66 +1,43 @@
-import os
+import asyncio
 import logging
-import nest_asyncio
-import threading
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from sniper import monitor_market  # Oblivion Mode sniper
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from sniper import monitor_market
 
-# Logging setup
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
-
-# Flask + Telegram setup
+# Flask app for webhook
 app = Flask(__name__)
-nest_asyncio.apply()
-application = Application.builder().token(TOKEN).build()
 
-# Commands
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper Bot is active and listening.")
+BOT_TOKEN = "7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo"
+WEBHOOK_URL = "https://solana-meme-sniper-godmode.onrender.com/" + BOT_TOKEN
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📊 Status command received. System is operational.")
+# Telegram app setup
+application = Application.builder().token(BOT_TOKEN).build()
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("status", status))
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook() -> str:
+@app.post(f"/{BOT_TOKEN}")
+async def telegram_webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
     await application.process_update(update)
     return "ok"
 
-def run_flask():
-    app.run(host="0.0.0.0", port=PORT)
+async def main():
+    await application.initialize()
+    await application.bot.delete_webhook()
+    await application.bot.set_webhook(url=WEBHOOK_URL)
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}")
 
-# Main async setup
+    # Launch sniper in background
+    asyncio.create_task(monitor_market())
+
+    await application.start()
+    await application.updater.start_polling()  # Safe fallback
+    await application.idle()
+
 if __name__ == "__main__":
-    import asyncio
-    import httpx
-
-    async def main():
-        # Set webhook
-        async with httpx.AsyncClient() as client:
-            await client.post(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
-            await client.post(
-                f"https://api.telegram.org/bot{TOKEN}/setWebhook",
-                params={"url": f"{WEBHOOK_URL}/{TOKEN}"}
-            )
-        logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
-        await application.bot.send_message(chat_id=TELEGRAM_ID, text="✅ Sniper Bot is live and scanning the market.")
-
-        # Start Flask server
-        threading.Thread(target=run_flask, daemon=True).start()
-
-        # Start Sniper Loop
-        await monitor_market()
-
+    import nest_asyncio
+    nest_asyncio.apply()
     asyncio.run(main())
