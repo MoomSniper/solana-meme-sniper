@@ -96,8 +96,8 @@ Chart: https://birdeye.so/token/{token_address}
 
 async def monitor_market(bot):
     while True:
+        logging.info("🧠 Sniper loop: scanning live token list...")
         tokens = await fetch_token_list()
-        for token in tokens:
             try:
                 await analyze_token(bot, token)
             except Exception as e:
