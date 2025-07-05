@@ -1,91 +1,105 @@
+import os
 import httpx
 import asyncio
 import logging
-import re
 
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 BIRDEYE_API = os.getenv("BIRDEYE_API")
 
 birdeye_headers = {"X-API-KEY": BIRDEYE_API}
-
-sniper_watchlist = {}
 active_coin = None
 
-def is_bot_hype(message_list):
-    return any("airdrops" in m.lower() or "invite" in m.lower() for m in message_list)
+# Example known smart wallets (replace or update later)
+smart_wallets = ["6hfG...xyz", "2T7P...abc"]
 
-async def fetch_social_data(coin):
+async def fetch_token_list():
+    url = "https://public-api.birdeye.so/defi/tokenlist?limit=50&offset=0"
     async with httpx.AsyncClient() as client:
-        # Placeholder endpoints, customize based on coin metadata
-        tg_resp = await client.get(f"https://api.telegram.org/{coin['telegram_url']}")
-        tw_resp = await client.get(f"https://api.twitter.com/{coin['twitter_url']}")
-        tg_hype = tg_resp.json().get("messages", [])
-        tw_hype = tw_resp.json().get("tweets", [])
-        fake_tg = is_bot_hype(tg_hype)
-        fake_tw = is_bot_hype(tw_hype)
-        score = 100
-        if fake_tg or fake_tw:
-            score -= 40
-        if len(tw_hype) < 5 or len(tg_hype) < 10:
-            score -= 30
-        return score, not (fake_tg or fake_tw)
+        resp = await client.get(url, headers=birdeye_headers)
+        return resp.json().get("data", {}).get("tokens", [])
 
-async def scan_coin(coin_id):
+async def fetch_trades(token_address):
+    url = f"https://public-api.birdeye.so/defi/token/{token_address}/trades"
     async with httpx.AsyncClient() as client:
-        # Replace this with your actual Birdeye endpoint logic
-        resp = await client.get(f"https://public-api.birdeye.so/defi/token/{coin_id}/trades", headers=birdeye_headers)
+        resp = await client.get(url, headers=birdeye_headers)
         trades = resp.json().get("data", {}).get("items", [])
+        return trades
+
+async def analyze_token(bot, token):
+    global active_coin
+    if active_coin: return  # already tracking one
+    trades = await fetch_trades(token["address"])
+    if len(trades) < 10: return
+
+    buyers = sum(1 for t in trades if t["side"] == "buy")
+    sellers = sum(1 for t in trades if t["side"] == "sell")
+    volume = sum(float(t["amount"]) for t in trades)
+    price = float(trades[-1]["price"]) if trades else 0
+
+    alpha = (
+        token["fdv"] and token["fdv"] < 300000 and
+        volume > 5000 and
+        buyers > sellers
+    )
+
+    if alpha:
+        active_coin = token["address"]
+        msg = f"""
+🚨 ALPHA COIN DETECTED
+Name: {token['name']}
+Symbol: {token['symbol']}
+Buyers: {buyers} | Sellers: {sellers}
+1H Volume: ${volume:,.2f}
+Price: ${price}
+Chart: https://birdeye.so/token/{token['address']}
+"""
+        await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+
+        # Start deep research loop
+        asyncio.create_task(deep_research(bot, token["address"]))
+
+async def deep_research(bot, token_address):
+    global active_coin
+    score = 100
+    while active_coin == token_address:
+        trades = await fetch_trades(token_address)
         buyers = sum(1 for t in trades if t["side"] == "buy")
         sellers = sum(1 for t in trades if t["side"] == "sell")
         volume = sum(float(t["amount"]) for t in trades)
         price = float(trades[-1]["price"]) if trades else 0
 
-        alpha = (buyers > sellers and volume > 5000 and price > 0)
-        return {
-            "buyers": buyers,
-            "sellers": sellers,
-            "volume": volume,
-            "price": price,
-            "alpha": alpha,
-            "url": f"https://birdeye.so/token/{coin_id}"
-        }
-
-async def deep_research_loop(bot, coin_id):
-    global active_coin
-    active_coin = coin_id
-    max_score = 0
-    while active_coin == coin_id:
-        result = await scan_coin(coin_id)
-        score, legit = await fetch_social_data({"telegram_url": "placeholder", "twitter_url": "placeholder"})  # Customize later
-
-        score_summary = f"""
-🧠 Deep Scan on [{coin_id}]
-Price: ${result['price']:.4f}
-Buyers: {result['buyers']} | Sellers: {result['sellers']}
-Volume: ${result['volume']:.2f}
-Social Score: {score}%
-Telegram + Twitter: {"Legit" if legit else "Botted"}
-Chart: {result['url']}
-"""
-
-        await bot.send_message(chat_id=TELEGRAM_ID, text=score_summary)
-
-        if result["volume"] < 3000 or result["buyers"] < result["sellers"]:
-            await bot.send_message(chat_id=TELEGRAM_ID, text="⚠️ Volume fading — consider EXIT")
+        # Logic-based scoring
+        if volume < 3000 or sellers > buyers:
+            await bot.send_message(chat_id=TELEGRAM_ID, text="⚠️ Exit — volume fading or sell pressure.")
             active_coin = None
             break
-        elif result["volume"] > 10000 and legit:
-            await bot.send_message(chat_id=TELEGRAM_ID, text="✅ HOLD — strong social + volume")
-        elif result["volume"] > 8000:
-            await bot.send_message(chat_id=TELEGRAM_ID, text="💰 Partial Take Profit — steady momentum")
+        elif volume > 10000:
+            await bot.send_message(chat_id=TELEGRAM_ID, text="✅ HOLD — strong push, good momentum.")
+        elif volume > 7000:
+            await bot.send_message(chat_id=TELEGRAM_ID, text="💰 Partial Take Profit — steady but watch carefully.")
 
+        # Social placeholder
+        score -= 1  # Fake social score decay logic
+        if score < 70:
+            await bot.send_message(chat_id=TELEGRAM_ID, text=f"⚠️ Social score dropping ({score}%) — re-evaluate soon.")
+
+        summary = f"""
+🧠 Deep Scan Update
+Buyers: {buyers} | Sellers: {sellers}
+Volume: ${volume:,.2f}
+Price: ${price}
+Score: {score}%
+Chart: https://birdeye.so/token/{token_address}
+"""
+        await bot.send_message(chat_id=TELEGRAM_ID, text=summary)
         await asyncio.sleep(60)
 
-def add_to_watch(coin_id):
-    sniper_watchlist[coin_id] = {"watched": True}
-
-def clear_active():
-    global active_coin
-    active_coin = None
+async def monitor_market(bot):
+    while True:
+        tokens = await fetch_token_list()
+        for token in tokens:
+            try:
+                await analyze_token(bot, token)
+            except Exception as e:
+                logging.error(f"Error analyzing token: {e}")
+        await asyncio.sleep(10)
