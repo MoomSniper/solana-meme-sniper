@@ -1,66 +1,69 @@
+import time
+import httpx
 import asyncio
 import logging
-import httpx
-import os
-from telegram import Bot
 
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API")
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BIRDEYE_API = os.getenv("BIRDEYE_API")
+MIN_VOLUME = 5000
+MIN_LIQUIDITY = 3000
+MIN_MULTIPLIER = 2.5
 
-bot = Bot(token=BOT_TOKEN)
-
-# Basic logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-async def fetch_token_list():
-    url = "https://public-api.birdeye.so/defi/tokenlist?limit=100&offset=0"
-    headers = {"X-API-KEY": BIRDEYE_API_KEY}
-
+def is_token_alpha(token):
     try:
+        volume = float(token.get("volume_1h", 0))
+        liquidity = float(token.get("liquidity", 0))
+        mc = float(token.get("market_cap", 0))
+
+        if (
+            volume >= MIN_VOLUME and
+            liquidity >= MIN_LIQUIDITY and
+            mc <= 300000 and
+            token.get("is_liquidity_locked", False)
+        ):
+            return True
+    except Exception as e:
+        logging.warning(f"Alpha check failed: {e}")
+    return False
+
+async def get_token_list():
+    try:
+        url = f"https://public-api.birdeye.so/defi/tokenlist?limit=100&offset=0"
+        headers = {"X-API-KEY": BIRDEYE_API}
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
-                data = response.json()
-                return data.get("data", [])
-            elif response.status_code == 429:
-                logging.warning("Birdeye rate limit hit. Skipping scan.")
+                return response.json().get("data", [])
             else:
-                logging.error(f"Unexpected response {response.status_code}: {response.text}")
+                logging.warning(f"Birdeye error: {response.status_code}")
     except Exception as e:
-        logging.error(f"Exception while fetching tokens: {e}")
+        logging.warning(f"Token fetch failed: {e}")
     return []
 
-async def scan_birdeye():
-    logging.info("\U0001F9E0 Sniper loop: scanning live token list...")
-    tokens = await fetch_token_list()
-
-    if not tokens:
-        logging.info("No tokens returned, skipping alert.")
-        return
-
-    for token in tokens:
-        # Basic example filter (expand with alpha-grade filters later)
-        if token.get("liquidity", 0) > 10000 and token.get("volume_h1", 0) > 5000:
-            name = token.get("name")
-            address = token.get("address")
-            mc = token.get("market_cap", 0)
-            vol = token.get("volume_h1", 0)
-            liquidity = token.get("liquidity", 0)
-
-            msg = f"\U0001F525 *ALPHA COIN FOUND*
-Name: {name}
-Market Cap: ${mc:,.0f}
-1H Volume: ${vol:,.0f}
-Liquidity: ${liquidity:,.0f}
-Address: `{address}`"
-
-            await bot.send_message(chat_id=TELEGRAM_ID, text=msg, parse_mode="Markdown")
-
-async def main_loop():
+async def sniper_loop(bot, chat_id):
     while True:
-        await scan_birdeye()
-        await asyncio.sleep(30)  # Run every 30 seconds
+        tokens = await get_token_list()
+        for token in tokens:
+            if is_token_alpha(token):
+                message = (
+                    f"ð *ALPHA FOUND*
 
-if __name__ == "__main__":
-    asyncio.run(main_loop())
+"
+                    f"Name: {token.get('name')}
+"
+                    f"Symbol: {token.get('symbol')}
+"
+                    f"Market Cap: ${token.get('market_cap'):,}
+"
+                    f"Liquidity: ${token.get('liquidity'):,}
+"
+                    f"1h Volume: ${token.get('volume_1h'):,}
+"
+                    f"Link: https://birdeye.so/token/{token.get('address')}
+
+"
+                    f"_Tracking deep research and exit signals..._"
+                )
+                await bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+                await asyncio.sleep(90)
+                # Place deep research logic here...
+        await asyncio.sleep(30)  # Scan every 30 seconds
