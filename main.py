@@ -17,7 +17,6 @@ TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 application = Application.builder().token(BOT_TOKEN).build()
-webhook_handler = WebhookHandler(application)
 
 # /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
