@@ -5,21 +5,22 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from sniper import monitor_market
 
-# Set up logging
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app for webhook
-app = Flask(__name__)
-
+# App config
 BOT_TOKEN = "7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo"
 WEBHOOK_URL = "https://solana-meme-sniper-godmode.onrender.com/" + BOT_TOKEN
 
-# Telegram app setup
+# Telegram bot app
 application = Application.builder().token(BOT_TOKEN).build()
 
+# Flask webhook
+app = Flask(__name__)
+
 @app.post(f"/{BOT_TOKEN}")
-async def telegram_webhook():
+async def webhook() -> str:
     update = Update.de_json(request.get_json(force=True), application.bot)
     await application.process_update(update)
     return "ok"
@@ -30,12 +31,11 @@ async def main():
     await application.bot.set_webhook(url=WEBHOOK_URL)
     logger.info(f"✅ Webhook set: {WEBHOOK_URL}")
 
-    # Launch sniper in background
+    # Start background sniper
     asyncio.create_task(monitor_market())
 
     await application.start()
-    await application.updater.start_polling()  # Safe fallback
-    await application.idle()
+    # No idle/polling here — this is webhook-only
 
 if __name__ == "__main__":
     import nest_asyncio
