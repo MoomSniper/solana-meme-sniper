@@ -12,7 +12,7 @@ from telegram.ext import (
 # === Load environment variables ===
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
-TELEGRAM_USER_ID = int(os.environ["telegram_id"])
+TELEGRAM_USER_ID = int(os.environ["TELEGRAM_ID"])
 
 # === Logging ===
 logging.basicConfig(level=logging.INFO)
