@@ -12,7 +12,7 @@ from telegram.ext import (
 # === Load environment variables ===
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
-TELEGRAM_USER_ID = int(os.environ["TELEGRAM_ID"])
+TELEGRAM_USER_ID = int(os.environ["telegram_id"])
 
 # === Logging ===
 logging.basicConfig(level=logging.INFO)
@@ -38,13 +38,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❓ Command not recognized. Try: watch, in, or out.")
 
-# === Flask route to receive Telegram webhooks ===
+# === Fixed Flask route to receive Telegram webhooks ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-   loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-    loop.create_task(application.process_update(update))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(application.process_update(update))
     return "OK"
 
 # === Main async setup ===
