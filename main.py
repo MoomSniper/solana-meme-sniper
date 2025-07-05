@@ -1,11 +1,11 @@
 import os
 import logging
 import nest_asyncio
+import threading
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-
-from sniper import monitor_market  # ✅ integrated safely
+from sniper import monitor_market
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -24,20 +24,20 @@ nest_asyncio.apply()
 # Telegram bot setup
 application = Application.builder().token(TOKEN).build()
 
-# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 Sniper Bot is active and listening.")
 
 application.add_handler(CommandHandler("start", start))
 
-# Flask webhook route
 @app.route(f"/{TOKEN}", methods=["POST"])
 async def webhook() -> str:
     update = Update.de_json(request.get_json(force=True), application.bot)
     await application.process_update(update)
     return "ok"
 
-# Set webhook and run Flask
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
 if __name__ == "__main__":
     import asyncio
     import httpx
@@ -51,11 +51,12 @@ if __name__ == "__main__":
             )
         await application.initialize()
         logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
-
-        # ✅ Launch sniper market scanner
-        asyncio.create_task(monitor_market(application.bot))
-
         await application.bot.send_message(chat_id=TELEGRAM_ID, text="✅ Sniper Bot is live and scanning the market.")
-        app.run(host="0.0.0.0", port=PORT)
+
+        # ✅ Start Flask in a background thread
+        threading.Thread(target=run_flask, daemon=True).start()
+
+        # ✅ Run the sniper scanner loop forever
+        await monitor_market(application.bot)
 
     asyncio.run(setup())
