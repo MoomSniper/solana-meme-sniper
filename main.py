@@ -1,18 +1,18 @@
 import os
-import asyncio
 import logging
-from threading import Thread
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    ContextTypes, filters
+    Application,
+    CommandHandler,
+    ContextTypes,
 )
 
-# === Load environment variables ===
+# === Environment Variables ===
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 TELEGRAM_USER_ID = int(os.environ["TELEGRAM_ID"])
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 
 # === Logging ===
 logging.basicConfig(level=logging.INFO)
@@ -20,57 +20,38 @@ logger = logging.getLogger(__name__)
 
 # === Flask App ===
 app = Flask(__name__)
-application = None
 
-# === Telegram Handlers ===
+# === Telegram Bot App ===
+application = Application.builder().token(BOT_TOKEN).build()
+
+# === Telegram Commands ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 Sniper bot is locked in and scanning. Say 'watch' to heat up the radar.")
+    await update.message.reply_text("✅ Sniper Bot Webhook is live and working.")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message.text.lower()
+application.add_handler(CommandHandler("start", start))
 
-    if msg == "watch":
-        await update.message.reply_text("👀 Watching coins that are heating up...")
-    elif msg == "in":
-        await update.message.reply_text("📈 Entering position. Bot tracking price action.")
-    elif msg == "out":
-        await update.message.reply_text("🚪 Exiting position. Profits (or damage) recorded.")
-    else:
-        await update.message.reply_text("❓ Command not recognized. Try: watch, in, or out.")
-
-# === Flask route to receive Telegram webhooks ===
+# === Flask Webhook Endpoint ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     try:
-        update = Update.de_json(request.get_json(force=True), application.bot)
+        update_data = request.get_json(force=True)
+        update = Update.de_json(update_data, application.bot)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.initialize())
         loop.run_until_complete(application.process_update(update))
+        return "OK"
     except Exception as e:
-        logger.error(f"Exception in telegram_webhook: {e}")
-    return "ok"
+        logger.exception(f"❌ Exception in telegram_webhook: {e}")
+        return "ERROR"
 
-# === Main async setup ===
-async def main():
-    global application
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-
-    # Start Flask server in a separate thread
-    Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-
-    # Delay to make sure Flask is up
-    await asyncio.sleep(2)
-
-    # Set Telegram webhook
-    url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
-    try:
-        res = await application.bot.set_webhook(url=url)
-        logger.info(f"✅ Webhook set: {url} — Telegram response: {res}")
-    except Exception as e:
-        logger.error(f"❌ Failed to set webhook: {e}")
+# === Set Webhook When Script Starts ===
+async def set_webhook():
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(set_webhook())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
