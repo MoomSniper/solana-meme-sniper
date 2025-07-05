@@ -1,61 +1,46 @@
 import os
+import json
 import logging
-import nest_asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+import asyncio
 
-from sniper import monitor_market  # ✅ integrated safely
+# Env
+BOT_TOKEN = os.environ['BOT_TOKEN']
+TELEGRAM_ID = int(os.environ['TELEGRAM_ID'])
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Env variables
-TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
-
-# Flask setup
+# Setup
 app = Flask(__name__)
-nest_asyncio.apply()
+logging.basicConfig(level=logging.INFO)
 
-# Telegram bot setup
-application = Application.builder().token(TOKEN).build()
+application = Application.builder().token(BOT_TOKEN).build()
 
-# Start command
+@app.post(f"/{BOT_TOKEN}")
+async def webhook() -> str:
+    data = request.get_json(force=True)
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return "OK"
+
+# Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != TELEGRAM_ID:
+        return
     await update.message.reply_text("🚀 Sniper Bot is active and listening.")
 
+# Register
 application.add_handler(CommandHandler("start", start))
 
-# Flask webhook route
-@app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook() -> str:
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
-    return "ok"
+# Start webhook and polling
+async def main():
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()  # required for command registration
+    await application.bot.set_webhook(url=os.environ['WEBHOOK_URL'])
 
-# Set webhook and run Flask
 if __name__ == "__main__":
-    import asyncio
-    import httpx
-
-    async def setup():
-        async with httpx.AsyncClient() as client:
-            await client.post(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
-            await client.post(
-                f"https://api.telegram.org/bot{TOKEN}/setWebhook",
-                params={"url": f"{WEBHOOK_URL}/{TOKEN}"}
-            )
-        await application.initialize()
-        logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
-
-        # ✅ Launch sniper market scanner
-        asyncio.create_task(monitor_market(application.bot))
-
-        app.run(host="0.0.0.0", port=PORT)
-
-    asyncio.run(setup())
-
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
