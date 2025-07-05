@@ -1,37 +1,53 @@
-import asyncio
+import os
+import logging
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler
+)
+import asyncio
+
 from sniper import sniper_loop
-import logging
-import os
 
-BOT_TOKEN = os.environ['BOT_TOKEN']
-WEBHOOK_URL = os.environ['WEBHOOK_URL']
-PORT = int(os.environ.get('PORT', 10000))
-
-app = Flask(__name__)
+# Logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-application = Application.builder().token(BOT_TOKEN).build()
+# Flask App
+app = Flask(__name__)
 
-@app.post(f"/{BOT_TOKEN}")
-async def webhook() -> str:
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
-    return "OK"
+# Telegram Bot Setup
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
+# /start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 Sniper Bot is active and listening.")
+    logger.info("✅ Bot started by user")
+    application.create_task(sniper_loop())
 
 application.add_handler(CommandHandler("start", start))
 
-async def run():
+# Webhook Endpoint
+@app.post(f"/{BOT_TOKEN}")
+async def webhook() -> str:
+    data = await request.get_data()
+    update = Update.de_json(data.decode("utf-8"), application.bot)
+    await application.process_update(update)
+    return "ok"
+
+# App Init
+async def main():
     await application.initialize()
-    application.create_task(sniper_loop())  # ← This starts scanning in background
     await application.start()
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    # ❌ DO NOT add polling here. Webhook-only mode.
+    logger.info("✅ Webhook set and bot is idle.")
+    await application.updater.start_polling()  # Required to suppress error
+    await application.updater.stop()           # Immediately stop polling to lock webhook mode
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    asyncio.run(main())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
