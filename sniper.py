@@ -1,44 +1,60 @@
 import os
-import httpx
-import asyncio
-import random
+import logging
+import nest_asyncio
+from flask import Flask, request
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
+from sniper import monitor_market  # ✅ integrated safely
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Env variables
+TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-birdeye_headers = {"X-API-KEY": BIRDEYE_API}
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 10000))
 
-async def monitor_market(bot):
-    while True:
-        print("🔍 Scanning market for hot coins...")
+# Flask setup
+app = Flask(__name__)
+nest_asyncio.apply()
 
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get("https://public-api.birdeye.so/public/pair/all?chain=solana", headers=birdeye_headers)
-                pairs = resp.json().get("data", [])
+# Telegram bot setup
+application = Application.builder().token(TOKEN).build()
 
-                # Filter coins with decent volume + liquidity
-                filtered = [p for p in pairs if float(p.get("volume_h24", 0)) > 10000 and float(p.get("liquidity_usd", 0)) > 5000]
+# Start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🚀 Sniper Bot is active and listening.")
 
-                if not filtered:
-                    await bot.send_message(chat_id=TELEGRAM_ID, text="⚠️ No hot coins found right now.")
-                else:
-                    coin = random.choice(filtered)
-                    name = coin.get("name", "Unknown")
-                    symbol = coin.get("symbol", "")
-                    volume = float(coin.get("volume_h24", 0))
-                    liquidity = float(coin.get("liquidity_usd", 0))
-                    url = f"https://birdeye.so/token/{coin.get('address')}?chain=solana"
+application.add_handler(CommandHandler("start", start))
 
-                    msg = f"""
-🚨 Hot Coin Spotted
-Name: {name} ({symbol})
-Volume (24h): ${volume:,.0f}
-Liquidity: ${liquidity:,.0f}
-Chart: {url}
-"""
-                    await bot.send_message(chat_id=TELEGRAM_ID, text=msg.strip())
+# Flask webhook route
+@app.route(f"/{TOKEN}", methods=["POST"])
+async def webhook() -> str:
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    await application.process_update(update)
+    return "ok"
 
-        except Exception as e:
-            print(f"❌ Error in monitor_market: {e}")
+# Set webhook and run Flask
+if __name__ == "__main__":
+    import asyncio
+    import httpx
 
-        await asyncio.sleep(60)
+    async def setup():
+        async with httpx.AsyncClient() as client:
+            await client.post(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
+            await client.post(
+                f"https://api.telegram.org/bot{TOKEN}/setWebhook",
+                params={"url": f"{WEBHOOK_URL}/{TOKEN}"}
+            )
+        await application.initialize()
+        logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
+
+        # ✅ Launch sniper market scanner
+        asyncio.create_task(monitor_market(application.bot))
+
+        app.run(host="0.0.0.0", port=PORT)
+
+    asyncio.run(setup())
