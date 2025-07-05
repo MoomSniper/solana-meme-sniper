@@ -39,14 +39,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❓ Command not recognized. Try: watch, in, or out.")
 
 # === Fixed Flask route to receive Telegram webhooks ===
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+@app.route(f'/{BOT_TOKEN}', methods=["POST"])
 def telegram_webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(application.process_update(update))
-    return "OK"
+    if request.method == "POST":
+        try:
+            update = Update.de_json(request.get_json(force=True), bot)
 
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(application.initialize())
+            loop.run_until_complete(application.process_update(update))
+        except Exception as e:
+            print(f"Error handling update: {e}")
+            logging.error(f"Exception in telegram_webhook: {e}")
+        return "ok"
+        
 # === Main async setup ===
 async def main():
     global application
