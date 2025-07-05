@@ -43,13 +43,11 @@ def telegram_webhook():
     try:
         update = Update.de_json(request.get_json(force=True), application.bot)
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        async def process():
+            await application.initialize()
+            await application.process_update(update)
 
-        loop.run_until_complete(application.initialize())
-        loop.run_until_complete(application.process_update(update))
-
-        loop.close()
+        asyncio.run(process())
 
     except Exception as e:
         logger.error(f"Exception in telegram_webhook: {e}")
