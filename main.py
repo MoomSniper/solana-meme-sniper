@@ -38,6 +38,6 @@ async def main():
     # No idle/polling here — this is webhook-only
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-    asyncio.run(main())
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
