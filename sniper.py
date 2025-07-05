@@ -98,7 +98,7 @@ Buyers (1h): {buyers}
     except Exception as e:
         logging.error(f"Error processing token: {e}")
 
-async def monitor_market():
+async def monitor_market(bot):
     while True:
         logging.info("🧠 Sniper loop: scanning live token list...")
         tokens = await fetch_token_list()
