@@ -43,6 +43,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def telegram_webhook():
     if request.method == "POST":
         try:
+            bot = application.bot  # ✅ Add this line
             update = Update.de_json(request.get_json(force=True), bot)
 
             loop = asyncio.new_event_loop()
