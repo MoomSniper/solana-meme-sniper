@@ -124,5 +124,29 @@ if __name__ == "__main__":
         await application.start()
         threading.Thread(target=track_tokens).start()
         threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+### INIT ###
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(handle_button))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    asyncio.run(main())
+if __name__ == "__main__":
+    async def main():
+        await application.initialize()
+        await application.bot.delete_webhook()
+
+        url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        try:
+            res = await application.bot.set_webhook(url=url)
+            print(f"✅ Webhook set to: {url} — Telegram response: {res}")
+        except Exception as e:
+            print(f"❌ Failed to set webhook: {e}")
+
+        await application.start()
+        threading.Thread(target=track_tokens).start()
+        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "closed" not in str(e):
+            raise
