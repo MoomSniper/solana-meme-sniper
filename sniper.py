@@ -95,8 +95,23 @@ Chart: https://birdeye.so/token/{token_address}
         await asyncio.sleep(60)
 
 async def monitor_market(bot):
+    logging.info("🧠 Sniper loop: scanning live token list...")
+    tokens = await fetch_token_list()
+
+    # Just pick the first coin to prove it's working
+    if tokens:
+        token = tokens[0]
+        msg = f"""
+🔍 TESTING LIVE COIN SCAN
+Name: {token['name']}
+Symbol: {token['symbol']}
+FDV: ${token['fdv']:,.0f}
+Chart: https://birdeye.so/token/{token['address']}
+"""
+        await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+
+    # Resume normal alpha scanning after test
     while True:
-        logging.info("🧠 Sniper loop: scanning live token list...")
         tokens = await fetch_token_list()
         for token in tokens:
             try:
