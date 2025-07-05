@@ -1,130 +1,73 @@
 import os
-import logging
 import asyncio
+import logging
+from threading import Thread
 from flask import Flask, request
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
 )
-import httpx
 
-# Load environment variables
+# === Load environment variables ===
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-TELEGRAM_ID = int(os.environ["TELEGRAM_ID"])
-BIRDEYE_API = os.environ["BIRDEYE_API"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+TELEGRAM_USER_ID = int(os.environ["TELEGRAM_ID"])
 
-# Setup logging
+# === Logging ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app
+# === Flask App ===
 app = Flask(__name__)
+application = None
 
-# Telegram bot & app
-bot = Bot(token=BOT_TOKEN)
-application = Application.builder().token(BOT_TOKEN).build()
-
-# Watchlist + radar
-watchlist = set()
-radar = []
-
-# Send message util
-async def send_msg(text):
-    await bot.send_message(chat_id=TELEGRAM_ID, text=text)
-
-# /start command
+# === Telegram Handlers ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 God Mode Sniper is live.")
+    await update.message.reply_text("🔥 Sniper bot is locked in and scanning. Say 'watch' to heat up the radar.")
 
-# /watch command to show radar
-async def watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not radar:
-        await update.message.reply_text("🟡 Radar is currently empty. Watching closely.")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message.text.lower()
+    if msg == "watch":
+        await update.message.reply_text("👀 Watching coins that are heating up...")
+    elif msg == "in":
+        await update.message.reply_text("📈 Entering position. Bot tracking price action.")
+    elif msg == "out":
+        await update.message.reply_text("🚪 Exiting position. Profits (or damage) recorded.")
     else:
-        msg = "🔭 **Radar Targets:**\n" + "\n".join(f"- {coin}" for coin in radar)
-        await update.message.reply_text(msg)
+        await update.message.reply_text("❓ Command not recognized. Try: watch, in, or out.")
 
-# in/out commands
-async def in_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    coin = context.args[0] if context.args else None
-    if not coin:
-        await update.message.reply_text("❌ No token address provided.")
-        return
-    watchlist.add(coin)
-    await update.message.reply_text(f"📍 Locked on: {coin}\nRunning deep scan now...")
-    await deep_scan(coin)
-
-async def out_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    coin = context.args[0] if context.args else None
-    if not coin:
-        await update.message.reply_text("❌ No token address provided.")
-        return
-    if coin in watchlist:
-        watchlist.remove(coin)
-        await update.message.reply_text(f"🚫 Removed from tracking: {coin}")
-    else:
-        await update.message.reply_text(f"{coin} is not being tracked.")
-
-# Deep scan logic
-async def deep_scan(address):
-    try:
-        url = f"https://public-api.birdeye.so/defi/token_info?address={address}"
-        headers = {"X-API-KEY": BIRDEYE_API}
-        async with httpx.AsyncClient() as client:
-            r = await client.get(url, headers=headers)
-            data = r.json().get("data", {})
-
-        if not data:
-            await send_msg(f"❌ No data found for {address}")
-            return
-
-        volume = float(data.get("volume_1h", 0))
-        buyers = int(data.get("tx_count_1h", 0))
-        mc = float(data.get("market_cap", 0))
-
-        if volume > 10000 and buyers >= 20 and mc < 300000:
-            await send_msg(f"✅ **ALPHA FOUND**\n{address}\nMC: ${int(mc)}\nVol(1h): ${int(volume)}\nBuyers(1h): {buyers}")
-        else:
-            radar.append(address)
-            await send_msg(f"🟠 Radar Mode: {address} — Watching for breakout.")
-    except Exception as e:
-        logger.error(f"Deep scan error: {e}")
-        await send_msg("❌ Deep scan failed.")
-
-# Add handlers
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("watch", watch))
-application.add_handler(CommandHandler("in", in_cmd))
-application.add_handler(CommandHandler("out", out_cmd))
-
-# Webhook route
+# === Flask route to receive Telegram webhooks ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     try:
-        update = Update.de_json(request.get_json(force=True), bot)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(application.process_update(update))
-        return "ok"
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        asyncio.run(application.process_update(update))
     except Exception as e:
         logger.error(f"Exception in telegram_webhook: {e}")
-        return "error"
+    return "ok"
 
-# Main runner
+# === Main async setup ===
+async def main():
+    global application
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+
+    # Start Flask server in a separate thread
+    Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+
+    # Delay to ensure Flask is ready
+    await asyncio.sleep(2)
+
+    # Set webhook
+    url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    try:
+        res = await application.bot.set_webhook(url=url)
+        logger.info(f"✅ Webhook set: {url} — Telegram response: {res}")
+    except Exception as e:
+        logger.error(f"❌ Failed to set webhook: {e}")
+
 if __name__ == "__main__":
-    logger.info("✅ Launching God Mode Sniper...")
-    application.run_polling()  # this won't actually run since we use webhook
-
-# Set webhook
-async def set_webhook():
-    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
-
-# Fire up Flask
-if __name__ != "__main__":
-    asyncio.run(set_webhook())
+    asyncio.run(main())
