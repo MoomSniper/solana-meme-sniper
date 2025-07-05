@@ -43,17 +43,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def telegram_webhook():
     if request.method == "POST":
         try:
-            bot = application.bot  # ✅ Add this line
+            bot = application.bot
             update = Update.de_json(request.get_json(force=True), bot)
 
-           async def handle_update():
-    await application.initialize()
-    await application.process_update(update)
+            async def handle_update():
+                await application.initialize()
+                await application.process_update(update)
 
-asyncio.run(handle_update())
+            asyncio.run(handle_update())
+
         except Exception as e:
             print(f"Error handling update: {e}")
             logging.error(f"Exception in telegram_webhook: {e}")
+        return "ok"ror(f"Exception in telegram_webhook: {e}")
         return "ok"
         
 # === Main async setup ===
