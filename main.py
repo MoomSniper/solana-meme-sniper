@@ -1,59 +1,59 @@
-import os
-import logging
-import asyncio
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-import httpx
-
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Load ENV
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-TELEGRAM_ID = int(os.environ.get("TELEGRAM_ID"))
-
-# Flask app
-app = Flask(__name__)
-
-# Telegram bot app
-application = Application.builder().token(BOT_TOKEN).build()
-
-# Commands
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Sniper bot is online and ready to hunt.")
-
-application.add_handler(CommandHandler("start", start))
-
-# Webhook route - SYNC handler
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "OK", 200
-
-# Root test route
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ Bot Server Running", 200
-
-# Set webhook once app is ready
-async def setup():
-    # Delete existing webhook
-    async with httpx.AsyncClient() as client:
-        await client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook")
-        await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
-            params={"url": f"{WEBHOOK_URL}/{BOT_TOKEN}"}
-        )
-    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
-    await application.bot.send_message(chat_id=TELEGRAM_ID, text="✅ Sniper Bot Deployed & Live via Webhook")
-
-# Startup
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(setup())
-    application.run_polling()  # Still needed to run dispatcher
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+telegram.error.Conflict: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first
+INFO:httpx:HTTP Request: POST https://api.telegram.org/bot7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo/getUpdates "HTTP/1.1 409 Conflict"
+ERROR:telegram.ext.Updater:Error while getting Updates: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first
+ERROR:telegram.ext.Application:No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/ext/_updater.py", line 607, in _network_loop_retry
+    if not await action_cb():
+           ^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/ext/_updater.py", line 335, in polling_action_cb
+    raise exc
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/ext/_updater.py", line 320, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/ext/_extbot.py", line 543, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 381, in decorator
+    result = await func(self, *args, **kwargs)  # skipcq: PYL-E1102
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 3661, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 469, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/ext/_extbot.py", line 325, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 497, in _do_post
+    return await request.post(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/request/_baserequest.py", line 168, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/telegram/request/_baserequest.py", line 330, in _request_wrapper
+    raise Conflict(message)
+telegram.error.Conflict: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first
+Need better ways to work with logs? Try theRender CLIor set up a log stream integration 
