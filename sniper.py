@@ -1,69 +1,80 @@
-import time
+import os
 import httpx
 import asyncio
 import logging
 
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-MIN_VOLUME = 5000
-MIN_LIQUIDITY = 3000
-MIN_MULTIPLIER = 2.5
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-def is_token_alpha(token):
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+SCAN_INTERVAL = 30  # seconds
+
+async def fetch_token_list():
+    url = "https://public-api.birdeye.so/defi/tokenlist?limit=100&offset=0"
+    headers = {
+        "accept": "application/json",
+        "X-API-KEY": os.getenv("BIRDEYE_API")
+    }
     try:
-        volume = float(token.get("volume_1h", 0))
-        liquidity = float(token.get("liquidity", 0))
-        mc = float(token.get("market_cap", 0))
-
-        if (
-            volume >= MIN_VOLUME and
-            liquidity >= MIN_LIQUIDITY and
-            mc <= 300000 and
-            token.get("is_liquidity_locked", False)
-        ):
-            return True
-    except Exception as e:
-        logging.warning(f"Alpha check failed: {e}")
-    return False
-
-async def get_token_list():
-    try:
-        url = f"https://public-api.birdeye.so/defi/tokenlist?limit=100&offset=0"
-        headers = {"X-API-KEY": BIRDEYE_API}
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
                 return response.json().get("data", [])
             else:
-                logging.warning(f"Birdeye error: {response.status_code}")
+                logger.warning(f"Invalid response from Birdeye: {response.status_code}")
+                return []
     except Exception as e:
-        logging.warning(f"Token fetch failed: {e}")
-    return []
+        logger.error(f"Failed to fetch token list: {e}")
+        return []
 
-async def sniper_loop(bot, chat_id):
-    while True:
-        tokens = await get_token_list()
-        for token in tokens:
-            if is_token_alpha(token):
-                message = (
-                    f"ð *ALPHA FOUND*
+async def send_telegram_message(message):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_ID,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        async with httpx.AsyncClient() as client:
+            await client.post(url, data=payload)
+    except Exception as e:
+        logger.error(f"Failed to send message: {e}")
 
-"
-                    f"Name: {token.get('name')}
-"
-                    f"Symbol: {token.get('symbol')}
-"
-                    f"Market Cap: ${token.get('market_cap'):,}
-"
-                    f"Liquidity: ${token.get('liquidity'):,}
-"
-                    f"1h Volume: ${token.get('volume_1h'):,}
-"
-                    f"Link: https://birdeye.so/token/{token.get('address')}
+def is_alpha(token):
+    try:
+        mc = float(token.get("market_cap", 0))
+        vol = float(token.get("volume_1h", 0))
+        locked = token.get("is_liquidity_locked", False)
+        return mc < 300000 and vol > 5000 and locked
+    except:
+        return False
 
+async def monitor_market():
+    logger.info("ð§  Sniper loop: scanning live token list...")
+
+    tokens = await fetch_token_list()
+    logger.info(f"ð Fetched {len(tokens)} tokens from Birdeye.")
+
+    for token in tokens:
+        if not is_alpha(token):
+            continue
+
+        msg = (
+            f"ð *ALPHA FOUND!*
 "
-                    f"_Tracking deep research and exit signals..._"
-                )
-                await bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
-                await asyncio.sleep(90)
-                # Place deep research logic here...
-        await asyncio.sleep(30)  # Scan every 30 seconds
+            f"Name: {token.get('name')}
+"
+            f"Symbol: {token.get('symbol')}
+"
+            f"Market Cap: ${token.get('market_cap')}
+"
+            f"1h Volume: ${token.get('volume_1h')}
+"
+            f"Chart: https://birdeye.so/token/{token.get('address')}"
+        )
+        await send_telegram_message(msg)
+
+    await asyncio.sleep(SCAN_INTERVAL)
+    await monitor_market()
