@@ -1,82 +1,73 @@
 import os
 import asyncio
+import logging
 from flask import Flask, request
+from telegram.ext import Application, CommandHandler
+from modules.telegram_engine import setup_telegram_commands
+from modules.alpha_scoring import scan_and_score_market
+from modules.alert_formatter import format_alert
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ContextTypes
 
-from modules.coinhall_ws import listen_for_pairs
-from modules.helius_wallets import check_wallet_quality
-from modules.contract_check import run_rug_check
-from modules.social_scraper import get_social_hype_score
-from modules.alpha_scoring import calculate_alpha_score
-from modules.exit_logic import analyze_exit
+# --- Logging ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("obsidian")
 
-# Load .env variables
+# --- Load Environment Vars ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-PORT = int(os.getenv("PORT", 10000))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", "10000"))
 
-app = Flask(__name__)
+# --- Flask App ---
+flask_app = Flask(__name__)
 
-# Command: /status
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Oblivion Sniper Bot is running and scanning.")
+# --- Telegram App ---
+telegram_app = Application.builder().token(BOT_TOKEN).build()
+setup_telegram_commands(telegram_app)
 
-# Core token scoring callback
-async def handle_token(token_info):
-    print(f"🟡 New coin detected: {token_info['token_name']} | MC: {token_info['market_cap']} | Volume 1h: {token_info['volume_1h']}")
+# --- Flask Webhook ---
+@flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+async def webhook():
+    await telegram_app.update_queue.put(Update.de_json(request.json, telegram_app.bot))
+    return "OK", 200
 
-    # Placeholder values — to be replaced with live scan targets
-    wallet_score = check_wallet_quality("HOLDER_WALLET_ADDRESS")
-    rug_score = run_rug_check("TOKEN_ADDRESS")
-    social_score = get_social_hype_score(500, 1000, 3.2)
+@flask_app.route("/", methods=["GET"])
+def home():
+    return "✅ Bot is alive", 200
 
-    score = calculate_alpha_score(token_info, wallet_score, rug_score, social_score)
+# --- Alpha Scanner Task ---
+async def sniper_loop():
+    while True:
+        try:
+            alpha_coin = await scan_and_score_market()
+            if alpha_coin:
+                alert = await format_alert(alpha_coin)
+                await telegram_app.bot.send_message(
+                    chat_id=TELEGRAM_ID,
+                    text=alert,
+                    parse_mode="HTML",
+                    disable_web_page_preview=False
+                )
+                logger.info(f"🚨 Alpha alert sent for {alpha_coin.get('symbol')}")
+        except Exception as e:
+            logger.error(f"[SNIPER ERROR] {e}")
+        await asyncio.sleep(2)
 
-    print(f"🔍 Alpha Scoring Result for {token_info['token_name']}:")
-    print(f"- Wallet Score: {wallet_score['score']}")
-    print(f"- RugCheck Score: {rug_score['score']}")
-    print(f"- Social Hype Score: {social_score}")
-    print(f"= Final Confidence: {score}%")
+# --- Startup ---
+async def main():
+    await telegram_app.initialize()
+    await telegram_app.start()
+    await telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info("🧠 Obsidian Bot Online")
 
-    if score >= 90:
-        print(f"🚨 ALPHA COIN TRIGGERED: {token_info['token_name']} | Score: {score}%")
-
-        msg = f"""🚨 *ALPHA COIN DETECTED* 🚨
-
-*Name:* {token_info['token_name']}
-*Market Cap:* ${round(token_info['market_cap'], 2)}
-*Volume (1h):* ${round(token_info['volume_1h'], 2)}
-*Alpha Score:* {score}%
-
-Scoring Breakdown:
-- 📊 Wallets: {wallet_score['score']}
-- 🛡️ RugCheck: {100 - rug_score['score']}
-- 🔥 Social Hype: {social_score}
-
-Get in early or stay watching 👀
-"""
-        await app.telegram_bot.send_message(chat_id=TELEGRAM_ID, text=msg, parse_mode="Markdown")
-        print("✅ Alpha alert sent to Telegram.")
-    else:
-        print(f"❌ Score too low for {token_info['token_name']}. Skipping.\n")
-
-# Start Telegram bot + WebSocket listener
-async def start_bot():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("status", status))
-
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    app.telegram_bot = application.bot
-
-    print("✅ Webhook connected. Sniper bot is scanning live Solana pairs...")
-
-    asyncio.create_task(listen_for_pairs(handle_token))
-
-    await application.updater.start_polling()
+    # Run sniper + Flask
+    await asyncio.gather(
+        sniper_loop(),
+        flask_app.run_task(host="0.0.0.0", port=PORT)
+    )
 
 if __name__ == "__main__":
-    asyncio.run(start_bot())
+    import nest_asyncio
+    nest_asyncio.apply()
+    asyncio.run(main())
