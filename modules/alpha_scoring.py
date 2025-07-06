@@ -1,25 +1,25 @@
-def calculate_alpha_score(data, wallet_score, rug_score, social_score):
-    score = 0
+# modules/alpha_scoring.py
+import logging
 
-    # Volume
-    if 5000 <= data["volume"] <= 300000:
-        score += 30
+def score_token(token):
+    try:
+        score = 0
 
-    # Buyers
-    if 10 <= data["buyers"] <= 150:
-        score += 20
+        mc = float(token.get("fdv", 0))
+        volume = float(token.get("volume_usd_1h", 0))
+        holders = token.get("holder_count", 0)
+        liq_locked = token.get("is_liquidity_locked", False)
 
-    # Market Cap
-    if data["mc"] and data["mc"] < 300000:
-        score += 20
+        if 5000 <= volume <= 300000:
+            score += 40
+        if 20 <= holders <= 300:
+            score += 30
+        if liq_locked:
+            score += 20
+        if mc < 300000:
+            score += 10
 
-    # Smart Wallets
-    score += wallet_score  # up to +10
-
-    # Contract Safety
-    score += rug_score  # up to +10
-
-    # Social Hype
-    score += social_score  # up to +10
-
-    return score
+        return min(score, 100)
+    except Exception as e:
+        logging.warning(f"[Scoring Error] {e}")
+        return 0
