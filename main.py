@@ -10,18 +10,19 @@ from telegram.ext import (
     ContextTypes,
 )
 
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-BIRDEYE_API = os.getenv("BIRDEYE_API")
 
+# Flask app for webhook
 app = Flask(__name__)
 
-# ========== TELEGRAM UTIL ==========
-
+# Telegram message sender
 async def send_telegram_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_ID, "text": text}
@@ -29,71 +30,40 @@ async def send_telegram_message(text: str):
         async with httpx.AsyncClient() as client:
             await client.post(url, json=payload)
     except Exception as e:
-        logger.error(f"❌ Telegram send error: {e}")
+        logger.error(f"❌ Failed to send Telegram message: {e}")
 
-# ========== MARKET SCANNER ==========
-
-async def scan_market():
-    try:
-        url = "https://public-api.birdeye.so/public/price/solana"
-        headers = {"X-API-KEY": BIRDEYE_API}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
-            data = response.json().get("data", [])
-
-        for coin in data:
-            symbol = coin.get("symbol", "")
-            price = float(coin.get("value", 0))
-
-            # Placeholder logic: flag if coin has 'dog' in name and price < $0.01
-            if "dog" in symbol.lower() and price < 0.01:
-                msg = f"🚨 Potential Alpha: {symbol}\n💰 Price: ${price}"
-                await send_telegram_message(msg)
-
-                # Start research timer
-                asyncio.create_task(deep_research(symbol))
-    except Exception as e:
-        logger.error(f"❌ Scan error: {e}")
-
+# Scanner loop
 async def scan_market_loop():
     while True:
         logger.info("⚡️ Scanning market for alpha...")
-        await scan_market()
-        await asyncio.sleep(44)
+        # Put real scanning logic here
+        await asyncio.sleep(44)  # Respect API quota
 
-# ========== DEEP RESEARCH ==========
+# Proper post_init function (called when loop is running)
+async def launch_tasks(app):
+    app.create_task(scan_market_loop())
 
-async def deep_research(symbol):
-    await asyncio.sleep(90)
-    try:
-        # Simulated research placeholders
-        fake_wallets = ["WhaleA", "WhaleB"]
-        fake_twitter_hype = "🔥🔥 1,200 tweets in 30m"
-        fake_telegram_hype = "2.3K members, 740 online"
-
-        msg = f"🧠 Deep Research on {symbol}:\n\n👛 Smart Wallets: {', '.join(fake_wallets)}\n🐦 Twitter: {fake_twitter_hype}\n💬 Telegram: {fake_telegram_hype}\n\n📈 Hold or Take Profit."
-        await send_telegram_message(msg)
-    except Exception as e:
-        logger.error(f"❌ Deep research error: {e}")
-
-# ========== TELEGRAM SETUP ==========
-
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 Sniper bot activated and watching the market in Obsidian Mode.")
 
+# Set up the Telegram bot app
 application = (
     ApplicationBuilder()
     .token(BOT_TOKEN)
-    .post_init(lambda app: app.create_task(scan_market_loop()))
+    .post_init(launch_tasks)
     .build()
 )
 
+# Register command
 application.add_handler(CommandHandler("start", start))
 
+# Flask route to show status
 @app.route("/", methods=["GET"])
 def index():
-    return "Sniper bot live."
+    return "Sniper bot is live."
 
+# Webhook endpoint
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
@@ -101,11 +71,12 @@ def webhook():
     application.update_queue.put_nowait(Update.de_json(data, application.bot))
     return "OK"
 
+# Run the bot in webhook mode
 if __name__ == "__main__":
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
     application.run_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 10000)),
-        webhook_url=WEBHOOK_URL,
+        port=int(os.getenv("PORT", default=10000)),
+        webhook_url=WEBHOOK_URL
     )
