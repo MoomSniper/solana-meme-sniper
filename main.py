@@ -1,6 +1,7 @@
 import os
 import logging
 import httpx
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -8,7 +9,6 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 app = Flask(__name__)
 
+# Send message to Telegram
 async def send_telegram_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_ID, "text": text}
@@ -28,15 +29,33 @@ async def send_telegram_message(text: str):
     except Exception as e:
         logger.error(f"❌ Failed to send Telegram message: {e}")
 
+# Market scan loop
 async def scan_market_loop():
     while True:
         logger.info("⚡️ Scanning market for alpha...")
-        # Add your logic here
         await asyncio.sleep(44)
+
+# Async post_init to launch scanner task
+async def post_init(app):
+    app.create_task(scan_market_loop())
+
+# /start handler
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🚀 Sniper bot activated and watching the market in Obsidian Mode.")
+
+# Telegram bot setup
+application = (
+    ApplicationBuilder()
+    .token(BOT_TOKEN)
+    .post_init(post_init)
+    .build()
+)
+
+application.add_handler(CommandHandler("start", start))
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Sniper bot is running."
+    return "Sniper bot is live."
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
@@ -44,16 +63,7 @@ def webhook():
     application.update_queue.put_nowait(Update.de_json(data, application.bot))
     return "OK"
 
-# Telegram Bot Setup
-application = ApplicationBuilder().token(BOT_TOKEN).post_init(lambda app: app.create_task(scan_market_loop())).build()
-
-# /start command handler
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper bot activated and watching the market in Obsidian Mode.")
-
-application.add_handler(CommandHandler("start", start))
-
-# Webhook mode
+# Run in webhook mode
 if __name__ == "__main__":
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
