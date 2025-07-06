@@ -1,30 +1,34 @@
-# modules/alpha_scoring.py
+import random
 import logging
 
-def score_token(token):
+logger = logging.getLogger("obsidian")
+
+async def score_token(token_data):
     try:
+        # Basic mock scoring logic — replace with your own logic as needed
+        market_cap = token_data.get("market_cap", 0)
+        volume = token_data.get("volume_1h", 0)
+        buyers = token_data.get("buyers", 0)
+
         score = 0
-
-        mc = float(token.get("fdv", 0))
-        volume = float(token.get("volume_usd_1h", 0))
-        holders = token.get("holder_count", 0)
-        liq_locked = token.get("is_liquidity_locked", False)
-
-        if 5000 <= volume <= 300000:
-            score += 40
-        if 20 <= holders <= 300:
+        if market_cap < 300_000:
             score += 30
-        if liq_locked:
-            score += 20
-        if mc < 300000:
-            score += 10
+        if volume > 5_000:
+            score += 30
+        if buyers >= 15:
+            score += 30
 
-        return min(score, 100)
+        # Add small randomness for tie-breakers
+        score += random.uniform(0, 10)
+
+        logger.info(f"[SCORING] {token_data.get('symbol')} scored {score:.2f}")
+        return score
+
     except Exception as e:
-        logging.warning(f"[Scoring Error] {e}")
+        logger.error(f"[SCORING ERROR] Failed to score token: {e}")
         return 0
 
-    async def get_coin_details(symbol: str):
+async def get_coin_details(symbol: str):
     return {
         "symbol": symbol,
         "market_cap": 120_000,
