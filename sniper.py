@@ -27,7 +27,11 @@ async def fetch_tokens():
             response = await client.get(url, headers=headers)
             response.raise_for_status()
             data = response.json()
-            return data.get("data", [])[:3]  # Send first 3 tokens just to test
+            token_list = data.get("data", [])
+            if not isinstance(token_list, list):
+                logger.warning("Birdeye returned non-list token data")
+                return []
+            return token_list[:3]
     except Exception as e:
         logger.warning(f"Error fetching tokens: {e}")
         return []
