@@ -17,7 +17,7 @@ async def setup():
     await application.bot.set_webhook(url=WEBHOOK_URL)
 
     # Start sniper logic (once, on boot)
-    aawait monitor_market()
+    await monitor_market()
 
     return application
 
