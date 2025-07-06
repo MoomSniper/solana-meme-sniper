@@ -1,10 +1,8 @@
-import os
-import asyncio
 import httpx
 import logging
-from datetime import datetime
+import asyncio
 
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API")
+BIRDEYE_API_KEY = "5d395eeeae754e048cd34ed07a72e2e1"
 
 async def get_token_list():
     url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
@@ -17,27 +15,27 @@ async def get_token_list():
         response = httpx.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json()
-            if isinstance(data.get("data"), list):
-                logging.info(f"✅ Token list received: {len(data['data'])} tokens")
-                return data["data"]
+            print("🔍 Raw Birdeye response:", data)  # LOG STRUCTURE
+            token_data = data.get("data")
+
+            if isinstance(token_data, list):
+                logging.info(f"✅ Token list received: {len(token_data)} tokens")
+                return token_data
             else:
                 logging.warning("❌ Birdeye returned non-list token data")
                 return []
+
         else:
             logging.warning(f"❌ Birdeye API error {response.status_code}: {response.text}")
             return []
+
     except Exception as e:
         logging.error(f"❌ Exception during token list fetch: {e}")
         return []
 
 async def monitor_market():
-    logging.info("🚀 Starting market monitor...")
-
     while True:
-        token_list = await get_token_list()
-
-        # TEMPORARY: Just print token count. Replace with sniper logic.
-        if token_list:
-            logging.info(f"📊 Monitoring {len(token_list)} tokens at {datetime.now().strftime('%H:%M:%S')}")
-
+        tokens = await get_token_list()
+        logging.info(f"📊 Monitoring {len(tokens)} tokens...")
+        # Placeholder — future logic goes here
         await asyncio.sleep(10)
