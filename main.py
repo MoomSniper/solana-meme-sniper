@@ -51,7 +51,6 @@ if __name__ == "__main__":
             )
         await application.initialize()
         logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
-        await application.bot.send_message(chat_id=TELEGRAM_ID, text="✅ Sniper Bot is live and scanning the market.")
 
         # ✅ Start Flask in a background thread
         threading.Thread(target=run_flask, daemon=True).start()
