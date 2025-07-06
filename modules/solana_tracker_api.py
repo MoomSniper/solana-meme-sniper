@@ -1,47 +1,37 @@
-# modules/solana_tracker.py
+import httpx
 import os
-import requests
 import logging
 
-SOL_TRACKER_API = os.getenv("SOL_TRACKER_API")  # Your API key
+SOLANA_TRACKER_API = os.getenv("SOLANA_TRACKER_API")
+BASE_URL = "https://public-api.solanatracker.io/tokens"
 
-BASE_URL = "https://api.solanatracker.io/v1/tokens"
+headers = {
+    "accept": "application/json",
+    "authorization": f"Bearer {SOLANA_TRACKER_API}"
+}
 
-def get_live_pairs():
+async def fetch_token_data(limit=50):
     try:
-        headers = {"Authorization": f"Bearer {SOL_TRACKER_API}"}
-        params = {
-            "sort": "created_at_desc",
-            "limit": 50,
-            "chain": "solana",
-            "is_token": True
-        }
-        response = requests.get(BASE_URL, headers=headers, params=params)
-        response.raise_for_status()
-        tokens = response.json().get("tokens", [])
-        return tokens
+        url = f"{BASE_URL}?sort=createdAt&order=desc&limit={limit}&offset=0"
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            tokens = response.json().get("data", [])
+            result = []
+            for token in tokens:
+                result.append({
+                    "name": token.get("name"),
+                    "symbol": token.get("symbol"),
+                    "address": token.get("address"),
+                    "market_cap": token.get("marketCap", 0),
+                    "volume": token.get("volume24h", 0),
+                    "holders": token.get("holders", 0),
+                    "created_at": token.get("createdAt"),
+                    "liquidity_locked": token.get("liquidityLocked", False),
+                    "slug": token.get("slug")
+                })
+            logging.info(f"[SOLANA TRACKER] ✅ Fetched {len(result)} tokens")
+            return result
     except Exception as e:
-        logging.error(f"[Solana Tracker Error] {e}")
+        logging.error(f"[SOLANA TRACKER] ❌ Error fetching tokens: {e}")
         return []
-
-def filter_alpha_candidates(tokens):
-    alpha_tokens = []
-    for token in tokens:
-        try:
-            mc = token.get("fdv", 0)
-            volume = token.get("volume_usd_1h", 0)
-            holders = token.get("holder_count", 0)
-            liq_locked = token.get("is_liquidity_locked", False)
-
-            if (
-                5000 <= volume <= 300000 and
-                20 <= holders <= 300 and
-                liq_locked and
-                mc and mc < 300000
-            ):
-                alpha_tokens.append(token)
-        except Exception as e:
-            logging.warning(f"[Token Filter Fail] {e}")
-            continue
-
-    return alpha_tokens
