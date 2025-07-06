@@ -1,50 +1,24 @@
+import os
+import requests
 import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Global bot state
-watchlist = []
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 
-# --- Command Handlers ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper bot activated.")
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not watchlist:
-        await update.message.reply_text("🕵️ No active coins being tracked.")
-    else:
-        tracked = "\n".join([f"- {c['symbol']} ({c['score']}%)" for c in watchlist])
-        await update.message.reply_text(f"🧠 Currently tracking:\n{tracked}")
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    watchlist.clear()
-    await update.message.reply_text("🛑 All coin tracking has been stopped.")
-
-async def in_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❌ Usage: /in SYMBOL")
+def send_telegram_alert(message: str):
+    if not BOT_TOKEN or not TELEGRAM_ID:
+        logging.error("[Telegram] Missing BOT_TOKEN or TELEGRAM_ID in env")
         return
 
-    symbol = context.args[0].upper()
-    # Placeholder structure — this should be updated dynamically in main
-    coin = {"symbol": symbol, "score": "???"}
-    watchlist.append(coin)
-    await update.message.reply_text(f"✅ Tracking {symbol}.")
-
-async def out_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❌ Usage: /out SYMBOL")
-        return
-
-    symbol = context.args[0].upper()
-    global watchlist
-    watchlist = [coin for coin in watchlist if coin["symbol"] != symbol]
-    await update.message.reply_text(f"❎ Stopped tracking {symbol}.")
-
-# --- Bot Setup ---
-def setup_telegram_commands(app: Application):
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CommandHandler("in", in_command))
-    app.add_handler(CommandHandler("out", out_command))
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_ID,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code != 200:
+            logging.warning(f"[Telegram] ❌ Failed to send alert: {response.text}")
+    except Exception as e:
+        logging.error(f"[Telegram] ❌ Error: {e}")
