@@ -13,15 +13,11 @@ PORT = int(os.getenv("PORT", 10000))
 app = Flask(__name__)
 application = Application.builder().token(BOT_TOKEN).build()
 
-# Telegram commands
+# 🧠 /start handler only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🧠 Obsidian Mode is live. Scanning for alpha now...")
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📡 Bot is running. Scanning every 44s for alpha 2.5–25x+")
-
 application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("status", status))
 
 @app.route("/", methods=["GET", "HEAD"])
 def index():
@@ -42,6 +38,7 @@ async def telegram_main():
     await application.start()
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
     logging.info("✅ Telegram webhook set.")
+    logging.info("🧠 Obsidian Mode active. Scanner running.")
 
 if __name__ == "__main__":
     threading.Thread(target=run_telegram).start()
