@@ -3,77 +3,70 @@ import asyncio
 import logging
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from modules.telegram_engine import setup_telegram_commands
-from modules.solana_tracker_api import fetch_token_data
-from modules.alpha_scoring import score_token
-from modules.contract_check import run_contract_safety_check
-from modules.social_scraper import scrape_social_signals
-from modules.deep_research import run_deep_research
-from modules.alert_formatter import format_alert
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+
 from sniper import scan_and_score_market
+from modules.telegram_engine import send_message  # make sure this exists
+from modules.commands import setup_telegram_commands  # make sure this exists
 
-# --- Logging ---
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("obsidian")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("main")
 
-# --- Load Env Vars ---
+# Flask app
+app = Flask(__name__)
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", "10000"))
+PORT = int(os.getenv("PORT", 10000))
 
-# --- Flask App ---
-flask_app = Flask(__name__)
-telegram_app = Application.builder().token(BOT_TOKEN).build()
+# Telegram Bot
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-setup_telegram_commands(telegram_app)
+# Telegram Commands
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Bot is online in Godest Mode.")
 
-@flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
-async def webhook():
-    await telegram_app.update_queue.put(Update.de_json(request.json, telegram_app.bot))
-    return "OK", 200
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="🧠 Obsidian scanner active. Scanning every 44s.")
 
-@flask_app.route("/", methods=["GET"])
-def health_check():
-    return "✅ Obsidian Bot Alive", 200
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("status", status))
+setup_telegram_commands(application)
 
-# --- Alpha Scanning Loop ---
-async def sniper_loop():
+# Background scanner every 44s
+async def run_scanner():
+    await asyncio.sleep(10)
     while True:
+        logger.info("🔍 Starting 44s scan...")
         try:
-            alpha_coin = await scan_and_score_market()
-            if alpha_coin:
-                alert = await format_alert(alpha_coin)
-                await telegram_app.bot.send_message(
-                    chat_id=TELEGRAM_ID,
-                    text=alert,
-                    parse_mode="HTML",
-                    disable_web_page_preview=False
-                )
-                logger.info(f"🚨 Alpha alert sent for {alpha_coin.get('symbol')}")
+            await scan_and_score_market()
         except Exception as e:
-            logger.error(f"[SNIPER ERROR] {e}")
-        await asyncio.sleep(2)
+            logger.error(f"❌ Scanner crashed: {e}")
+        await asyncio.sleep(44)
 
-# --- Main Entry ---
+# Webhook Flask route
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+async def telegram_webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    await application.process_update(update)
+    return "OK"
+
+# Start everything
 async def main():
-    await telegram_app.initialize()
-    await telegram_app.start()
-    await telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info("🧠 Obsidian Bot Online")
-
-    # Flask in async thread
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, lambda: flask_app.run(host="0.0.0.0", port=PORT))
-
-    # Start scanner
-    await sniper_loop()
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info("✅ Telegram webhook set.")
+    logger.info("🧠 Obsidian Mode activated.")
+    asyncio.create_task(run_scanner())
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        logger.exception("🔥 Bot crashed on startup:")
+    asyncio.run(main())
