@@ -33,11 +33,15 @@ async def fetch_tokens():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers, timeout=10)
+            if response.status_code == 429:
+                logger.warning("⛔ Rate limit hit. Backing off.")
+                await asyncio.sleep(15)  # wait before next scan
+                return []
             data = response.json()
             if isinstance(data.get("data"), list):
                 return data["data"]
             else:
-                logger.warning("Birdeye returned non-list token data")
+                logger.warning(f"Birdeye response format unexpected: {data}")
                 return []
     except Exception as e:
         logger.warning(f"Error fetching tokens: {e}")
