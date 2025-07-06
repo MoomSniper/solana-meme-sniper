@@ -1,68 +1,45 @@
-import os
-import asyncio
 import logging
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
+from modules.telegram_engine import send_message
+import os
 
-from sniper import scan_and_score_market
-
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("main")
-
-# Flask
-app = Flask(__name__)
-
-# Env Vars
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
 
-# Telegram app
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+app = Flask(__name__)
 
-# Commands
+application = Application.builder().token(BOT_TOKEN).build()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Bot is online in Godest Mode.")
+    await update.message.reply_text("🧠 Obsidian Mode is live. Scanning for alpha now...")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="🧠 Obsidian scanner is active. Scanning every 44s.")
+    await update.message.reply_text("📡 Bot is running. Scanning every 44s for alpha 2.5–25x+")
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("status", status))
 
-# Scanner loop
-async def run_scanner():
-    await asyncio.sleep(10)
-    while True:
-        logger.info("🔍 Running scan...")
-        try:
-            await scan_and_score_market()
-        except Exception as e:
-            logger.error(f"❌ Scan failed: {e}")
-        await asyncio.sleep(44)
+@app.route("/", methods=["HEAD", "GET"])
+def home():
+    return "Bot is live", 200
 
-# Webhook endpoint
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def telegram_webhook():
+def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    asyncio.run(application.process_update(update))
-    return "OK"
+    application.update_queue.put_nowait(update)
+    return "OK", 200
 
-# Init everything
-async def main():
-    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info("✅ Telegram webhook set.")
-    logger.info("🧠 Obsidian Mode active. Scanner running.")
-    asyncio.create_task(run_scanner())
+async def run():
     await application.initialize()
     await application.start()
-    app.run(host="0.0.0.0", port=PORT)
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logging.info("✅ Telegram webhook set.")
+    logging.info("🧠 Obsidian Mode active. Scanner running.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import asyncio
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(run())
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
