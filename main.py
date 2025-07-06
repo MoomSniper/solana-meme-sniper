@@ -1,7 +1,6 @@
 import os
 import asyncio
 from flask import Flask, request
-from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -13,7 +12,6 @@ from modules.alpha_scoring import calculate_alpha_score
 from modules.exit_logic import analyze_exit
 
 # Load .env variables
-load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 PORT = int(os.getenv("PORT", 10000))
