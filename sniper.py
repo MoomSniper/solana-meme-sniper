@@ -2,106 +2,82 @@ import os
 import httpx
 import asyncio
 import logging
-import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
-TOKEN = os.getenv("BOT_TOKEN")
-USER_ID = int(os.getenv("TELEGRAM_ID"))
-
-logging.basicConfig(level=logging.INFO)
+# Logger setup
 logger = logging.getLogger("sniper")
+logger.setLevel(logging.INFO)
 
-async def send(msg):
-    async with httpx.AsyncClient() as client:
-        await client.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                          json={"chat_id": USER_ID, "text": msg, "parse_mode": "HTML"})
+BIRDEYE_API_KEY = os.getenv("BIRDEYE_API")
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 
-async def fetch_tokens():
+# New working endpoint
+API_URL = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+HEADERS = {"X-API-KEY": BIRDEYE_API_KEY}
+
+# Minimum alpha score threshold
+ALPHA_SCORE_THRESHOLD = 85
+
+# Store processed tokens to avoid spam
+processed_tokens = {}
+
+async def fetch_token_data():
     try:
-        url = "https://public-api.birdeye.so/public/combined/tokenlist?chain=solana"
-        headers = {"X-API-KEY": os.getenv("BIRDEYE_API")}
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers)
-            data = resp.json()
-            return data["data"]["tokens"]
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(API_URL, headers=HEADERS)
+            response.raise_for_status()
+            return response.json().get("data", [])
     except Exception as e:
         logger.warning(f"Birdeye fetch failed: {e}")
         return []
 
-def score_alpha(token):
-    # Live scoring logic
-    if not token.get("volume_1h_usd") or not token.get("liquidity"):
+def calculate_alpha_score(token):
+    try:
+        mc = float(token.get("market_cap", 0))
+        volume = float(token.get("volume_1h_usd", 0))
+        buyers = int(token.get("tx_count_1h", 0))
+
+        if mc <= 0 or volume <= 0:
+            return 0
+
+        score = 0
+        if mc < 300000: score += 30
+        if volume > 5000: score += 30
+        if buyers > 15: score += 20
+        if token.get("symbol") and len(token["symbol"]) <= 5: score += 10
+
+        return score
+    except:
         return 0
-    mc = token.get("mc", 0)
-    buyers = token.get("txns_h1", 0)
-    vol = token["volume_1h_usd"]
-
-    if mc == 0 or buyers < 20 or vol < 10000:
-        return 0
-
-    score = 0
-    if 5000 < vol < 20000: score += 15
-    if 20000 <= vol < 100000: score += 30
-    if vol >= 100000: score += 45
-
-    if mc <= 250000: score += 25
-    elif mc <= 500000: score += 15
-
-    if buyers >= 40: score += 20
-    elif buyers >= 25: score += 10
-
-    return min(score, 100)
-
-async def deep_research(token):
-    symbol = token.get("symbol", "Unknown")
-    ca = token.get("address", "")
-    mc = token.get("mc", 0)
-    vol = token.get("volume_1h_usd", 0)
-
-    # Simulated social/hype audit
-    hype_score = 70 + (mc % 25)
-    smart_wallets = "Yes" if mc % 3 else "No"
-    bot_percent = "Low" if vol > 20000 else "Medium"
-    projected = f"{round(vol / 5000, 1)}x"
-
-    await send(f"""
-🔍 <b>Deep Research Report</b> on <b>{symbol}</b>:
-
-• Projected Potential: <b>{projected}</b>
-• Hype Score: <b>{hype_score}/100</b>
-• Smart Wallets Buying: <b>{smart_wallets}</b>
-• Bot Activity: <b>{bot_percent}</b>
-
-🧠 <b>Action:</b> HOLD — Partial TP recommended if 5x hits.
-""")
 
 async def monitor_market(bot):
-    sent_tokens = set()
     while True:
-        tokens = await fetch_tokens()
+        tokens = await fetch_token_data()
+        now = datetime.utcnow()
+
         for token in tokens:
-            ca = token.get("address", "")
-            if ca in sent_tokens:
+            address = token.get("address")
+            if not address or address in processed_tokens:
                 continue
 
-            score = score_alpha(token)
-            if score >= 85:
-                symbol = token.get("symbol", "Unknown")
-                mc = token.get("mc", 0)
-                vol = token.get("volume_1h_usd", 0)
-                buyers = token.get("txns_h1", 0)
+            score = calculate_alpha_score(token)
+            if score >= ALPHA_SCORE_THRESHOLD:
+                symbol = token.get("symbol", "N/A")
+                mc = token.get("market_cap", "N/A")
+                vol = token.get("volume_1h_usd", "N/A")
+                buyers = token.get("tx_count_1h", "N/A")
 
-                sent_tokens.add(ca)
-                await send(f"""
-🚀 <b>Alpha Found: {symbol}</b>
-• Market Cap: ${mc}
-• Volume (1h): ${vol}
-• Buyers (1h): {buyers}
-• Alpha Score: {score}/100
-• <b>Entry Recommended</b> ✅
-""")
-                # Wait 90 seconds, then trigger deep research
-                await asyncio.sleep(90)
-                await deep_research(token)
+                msg = (
+                    "<b>Alpha Detected</b>\n"
+                    f"<b>Symbol:</b> {symbol}\n"
+                    f"<b>Market Cap:</b> ${mc}\n"
+                    f"<b>1h Volume:</b> ${vol}\n"
+                    f"<b>Buyers (1h):</b> {buyers}\n"
+                    f"<b>Alpha Score:</b> {score}/100\n"
+                    f"<b>Time:</b> {now.strftime('%H:%M:%S UTC')}\n\n"
+                    "Tracking initiated... ð"
+                )
+                await bot.send_message(chat_id=TELEGRAM_ID, text=msg, parse_mode="HTML")
+                processed_tokens[address] = now
 
         await asyncio.sleep(4)
