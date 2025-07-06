@@ -23,3 +23,13 @@ def score_token(token):
     except Exception as e:
         logging.warning(f"[Scoring Error] {e}")
         return 0
+
+        async def get_coin_details(symbol: str):
+    # Placeholder logic – customize this based on how you want to fetch data
+    return {
+        "symbol": symbol,
+        "market_cap": 120_000,
+        "volume_1h": 25_000,
+        "buyers": 22,
+        "score": 91.5
+    }
