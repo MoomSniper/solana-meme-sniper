@@ -1,43 +1,29 @@
 import os
-import asyncio
 import httpx
 import logging
 
-logger = logging.getLogger("sniper")
-logging.basicConfig(level=logging.INFO)
+BIRDEYE_API_KEY = os.getenv("BIRDEYE_API")
 
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+async def get_token_list():
+    url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+    headers = {
+        "X-API-KEY": BIRDEYE_API_KEY,
+        "accept": "application/json"
+    }
 
-async def send_telegram_message(message: str):
-    if not TELEGRAM_ID or not BOT_TOKEN:
-        logger.warning("Missing TELEGRAM_ID or BOT_TOKEN")
-        return
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_ID, "text": message}
-    async with httpx.AsyncClient() as client:
-        await client.post(url, json=payload)
-
-async def monitor_market():
-    logger.info("Starting market monitor...")
-    async with httpx.AsyncClient() as client:
-        while True:
-            try:
-                response = await client.get("https://public-api.birdeye.so/defi/tokenlist?chain=solana")
-                data = response.json()
-
-                # Check and extract tokens from a wrapped response
-                tokens = data.get("tokens", []) if isinstance(data, dict) else data
-
-                if not isinstance(tokens, list):
-                    logger.warning(f"Unexpected tokenlist structure: {data}")
-                    await asyncio.sleep(10)
-                    continue
-
-                # Proceed with filtered token logic (placeholder)
-                logger.info(f"Token list received: {len(tokens)} tokens")
-
-            except Exception as e:
-                logger.error(f"Error in monitor_market: {e}")
-
-            await asyncio.sleep(10)
+    try:
+        response = httpx.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data.get("data"), list):
+                logging.info(f"✅ Token list received: {len(data['data'])} tokens")
+                return data["data"]
+            else:
+                logging.warning("❌ Birdeye returned non-list token data")
+                return []
+        else:
+            logging.warning(f"❌ Birdeye API error {response.status_code}: {response.text}")
+            return []
+    except Exception as e:
+        logging.error(f"❌ Exception during token list fetch: {e}")
+        return []
