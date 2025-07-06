@@ -19,7 +19,7 @@ headers = {
 
 def send_message(text):
     try:
-        bot.send_message(chat_id=TELEGRAM_ID, text=text)
+        await bot.send_message(chat_id=TELEGRAM_ID, text=text)
     except Exception as e:
         logger.error(f"Failed to send message: {e}")
 
@@ -33,7 +33,7 @@ def fetch_tokens():
         logger.warning(f"Error fetching tokens: {e}")
         return []
 
-def monitor_market():
+async def monitor_market():
     send_message("⚙️ TEST MODE: Loosened filters. Fetching up to 3 live tokens now...")
 
     tokens = fetch_tokens()
