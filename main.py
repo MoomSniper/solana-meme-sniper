@@ -1,4 +1,9 @@
-import os
+if __name__ == "__main__":
+    logger.info("🔧 Launching Flask app...")
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_sniping())  # Launch sniper loop
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))import os
 import asyncio
 import logging
 from flask import Flask, request
@@ -40,4 +45,7 @@ async def handle_update(update: Update):
 # === Run App ===
 if __name__ == "__main__":
     logger.info("🔧 Launching Flask app...")
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_sniping())  # Launch sniper loop
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
