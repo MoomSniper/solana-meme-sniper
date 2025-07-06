@@ -1,5 +1,5 @@
 import logging
-from modules.social_scraper import fetch_social_stats
+from modules.social_scraper import scrape_social_signals
 from modules.alpha_scoring import get_coin_details
 
 logger = logging.getLogger(__name__)
