@@ -49,5 +49,18 @@ application.run_webhook(
     port=int(os.environ.get("PORT", 10000)),
     url_path=BOT_TOKEN,
     webhook_url=WEBHOOK_URL + "/" + BOT_TOKEN,
-)
+
+from flask import Flask
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return 'Sniper bot is running in Obsidian Mode.'
+
+# Run Flask to keep Render happy
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
