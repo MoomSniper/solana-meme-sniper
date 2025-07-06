@@ -1,107 +1,75 @@
 import asyncio
 import logging
 import httpx
-from datetime import datetime, time
+import json
+from datetime import datetime
 from pytz import timezone
+from modules.alpha_filters import is_high_potential_token
+from modules.logger import log_alpha_found
+from modules.solana_tracker import fetch_token_data
+from modules.telegram_engine import send_telegram_alert
+from websockets import connect
 
-# Set timezone
-eastern = timezone("US/Eastern")
+# Timezone setup
+eastern = timezone('US/Eastern')
 
-# Configure logger
-logger = logging.getLogger("sniper")
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-formatter = logging.Formatter("INFO:sniper:%(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+# Config
+BIRDEYE_WS = "wss://public-api.birdeye.so/ws"
+WATCHED_TOKENS = set()
 
-# Solana Tracker API key
-SOLANA_TRACKER_API_KEY = "9a8e336e-9600-4aa3-ae05-ac91456ac055"
-HEADERS = {
-    "accept": "application/json",
-    "x-api-key": SOLANA_TRACKER_API_KEY
-}
+async def handle_birdeye_stream():
+    async with connect(BIRDEYE_WS) as ws:
+        subscribe_payload = json.dumps({
+            "type": "subscribe_new_pairs",
+            "network": "solana"
+        })
+        await ws.send(subscribe_payload)
+        logging.info("✅ [WebSocket] Subscribed to new Solana pairs")
 
-# Limit request frequency
-SCAN_INTERVAL = 44
+        while True:
+            try:
+                raw_msg = await ws.recv()
+                data = json.loads(raw_msg)
 
-# Solana rest window (Eastern Time)
-REST_START = time(0, 0)  # 12 AM
-REST_END = time(7, 0)    # 7 AM
+                if data.get("type") == "pair_created":
+                    token_info = data.get("pair", {})
+                    token_address = token_info.get("address")
+                    token_name = token_info.get("name")
+                    token_symbol = token_info.get("symbol")
 
-def is_in_rest_hours():
-    now = datetime.now(eastern).time()
-    return REST_START <= now <= REST_END
+                    if token_address in WATCHED_TOKENS:
+                        continue
+                    WATCHED_TOKENS.add(token_address)
 
-async def fetch_new_token_mints(limit=5):
-    url = f"https://public-api.solanatracker.io/tokens?sort=createdAt&order=desc&limit={limit}"
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, headers=HEADERS)
-            if response.status_code == 200:
-                return response.json().get("data", [])
-            else:
-                logger.warning(f"[SolanaTracker] ❌ Token fetch failed: {response.status_code}")
-                return []
-    except Exception as e:
-        logger.error(f"[SolanaTracker] ⚠️ Exception during token fetch: {e}")
-        return []
+                    logging.info(f"🆕 New Token Detected: {token_name} ({token_symbol})")
 
-async def fetch_token_details(token_address):
-    url = f"https://public-api.solanatracker.io/token/{token_address}"
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, headers=HEADERS)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.warning(f"[SolanaTracker] ❌ Token fetch failed: {response.status_code}")
-                return None
-    except Exception as e:
-        logger.error(f"[SolanaTracker] ⚠️ Error fetching token details: {e}")
-        return None
+                    # Fetch metadata from Solana Tracker
+                    token_data = await fetch_token_data(token_address)
+                    if not token_data:
+                        logging.warning(f"⚠️ No token data found for {token_address}")
+                        continue
 
-def is_alpha_worthy(token_data):
-    try:
-        if not token_data:
-            return False
-        market_cap = token_data.get("marketCap", 0)
-        holders = token_data.get("holders", 0)
-        volume = token_data.get("volume", 0)
+                    # Run sniper-grade filters
+                    is_alpha, alpha_score = is_high_potential_token(token_data)
+                    if is_alpha:
+                        logging.info(f"💥 ALPHA FOUND: {token_name} ({token_symbol}) | Score: {alpha_score}")
+                        log_alpha_found(token_data, alpha_score)
+                        await send_telegram_alert(token_data, alpha_score)
 
-        # Godest Mode filters
-        return (
-            market_cap < 300_000 and
-            volume > 5_000 and
-            holders > 50
-        )
-    except Exception as e:
-        logger.error(f"[Scoring Error] ⚠️ Failed to score token: {e}")
-        return False
+                await asyncio.sleep(0.01)  # keep loop tight but not overwhelming
+            except Exception as e:
+                logging.error(f"❌ [WebSocket Error] {e}")
+                await asyncio.sleep(3)
 
 async def scan_and_score_market():
-    while True:
-        if is_in_rest_hours():
-            logger.info("😴 Sleeping during rest hours (12AM–7AM EST)...")
-            await asyncio.sleep(SCAN_INTERVAL)
-            continue
+    # Not used now — replaced by websocket scanner for live coins
+    logging.info("⚠️ Obsidian Mode only uses WebSocket scanner now.")
+    return
 
-        logger.info("🔍 Starting scan...")
-
-        token_list = await fetch_new_token_mints(limit=10)
-
-        for token in token_list:
-            address = token.get("address")
-            if not address:
-                continue
-
-            logger.info(f"🔎 Evaluating token: {address}")
-            token_data = await fetch_token_details(address)
-
-            if is_alpha_worthy(token_data):
-                logger.info(f"🚀 Alpha Detected: {address}")
-                # Future: send to Telegram
-            else:
-                logger.info(f"⛔ Not alpha: {address}")
-
-        await asyncio.sleep(SCAN_INTERVAL)
+def start_sniper():
+    now = datetime.now(eastern)
+    if 7 <= now.hour < 24:
+        logging.info("🚀 Sniper is live — Obsidian Mode active")
+        asyncio.run(handle_birdeye_stream())
+    else:
+        logging.info("💤 Sleeping hours (12am–7am) — sniper paused")
