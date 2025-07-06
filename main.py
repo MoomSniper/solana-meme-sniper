@@ -4,7 +4,7 @@ import logging
 from flask import Flask, request
 from telegram.ext import Application, CommandHandler
 from modules.telegram_engine import setup_telegram_commands
-from modules.alpha_scoring import scan_and_score_market
+from sniper import scan_and_score_market
 from modules.alert_formatter import format_alert
 from telegram import Update
 from telegram.ext import ContextTypes
