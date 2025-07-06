@@ -22,7 +22,7 @@ app = Flask(__name__)
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.get_event_loop().create_task(handle_update(update))
+    asyncio.run(handle_update(update))
     logger.info(f"✅ Incoming update: {update.message.text if update.message else 'No message'}")
     return "OK"
 
