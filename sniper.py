@@ -1,6 +1,8 @@
 import os
+import asyncio
 import httpx
 import logging
+from datetime import datetime
 
 BIRDEYE_API_KEY = os.getenv("BIRDEYE_API")
 
@@ -27,3 +29,15 @@ async def get_token_list():
     except Exception as e:
         logging.error(f"❌ Exception during token list fetch: {e}")
         return []
+
+async def monitor_market():
+    logging.info("🚀 Starting market monitor...")
+
+    while True:
+        token_list = await get_token_list()
+
+        # TEMPORARY: Just print token count. Replace with sniper logic.
+        if token_list:
+            logging.info(f"📊 Monitoring {len(token_list)} tokens at {datetime.now().strftime('%H:%M:%S')}")
+
+        await asyncio.sleep(10)
