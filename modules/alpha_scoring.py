@@ -25,7 +25,6 @@ def score_token(token):
         return 0
 
     async def get_coin_details(symbol: str):
-    # ✅ MUST be indented under the function
     return {
         "symbol": symbol,
         "market_cap": 120_000,
