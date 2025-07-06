@@ -22,3 +22,7 @@ def send_telegram_alert(message: str):
             logging.warning(f"[Telegram] ❌ Failed to send alert: {response.text}")
     except Exception as e:
         logging.error(f"[Telegram] ❌ Error: {e}")
+
+def setup_telegram_commands(application):
+    # Placeholder: add real command handlers later if needed
+    print("✅ Telegram commands are ready (placeholder)")
