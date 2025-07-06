@@ -1,49 +1,55 @@
 import os
-import asyncio
 import logging
+import asyncio
 from flask import Flask, request
-from telegram.ext import Application
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from sniper import start_sniping
 
-# Environment variables
-TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.getenv("PORT", "10000"))
+# === Environment Vars ===
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 10000))
 
-# Logging
+# === Logger Setup ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app
+# === Flask App Setup ===
 app = Flask(__name__)
+bot = Bot(token=BOT_TOKEN)
 
-# Initialize application
-application = Application.builder().token(TOKEN).build()
+# === Telegram Bot Setup ===
+application = Application.builder().token(BOT_TOKEN).build()
 
-@app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook_handler():
-    await application.update_queue.put(request.json)
-    return {"status": "ok"}
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Sniper bot is live and hunting for alpha.")
 
-async def main():
-    # Set webhook
-    await application.bot.delete_webhook()
-    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
+application.add_handler(CommandHandler("start", start))
 
-    # Start sniper
-    logger.info("🚀 Starting DEX Screener sniper...")
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    if request.method == "POST":
+        update = Update.de_json(request.get_json(force=True), bot)
+        application.update_queue.put_nowait(update)
+        return "OK", 200
+
+# === Run Everything ===
+async def run():
+    logger.info("🚀 Setting webhook...")
+    await bot.delete_webhook()
+    await bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
+
+    logger.info("🚀 Starting market monitor...")
     asyncio.create_task(start_sniping())
-
-    # Start the bot
     await application.initialize()
     await application.start()
-    await application.updater.start_polling()
+    await application.updater.start_polling()  # Required by Telegram framework internals
+    await application.updater.idle()
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-
     loop = asyncio.get_event_loop()
-    loop.create_task(main())
+    loop.create_task(run())
     app.run(host="0.0.0.0", port=PORT)
