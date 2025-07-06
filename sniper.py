@@ -1,91 +1,95 @@
 import os
-import httpx
 import logging
 import asyncio
-from datetime import datetime
-from typing import List
+import httpx
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-
-logger = logging.getLogger("sniper")
+# Logging setup
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("sniper")
 
-headers = {
-    "X-API-KEY": BIRDEYE_API
-}
+# Environment variables
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+TELEGRAM_ID = int(os.environ.get("TELEGRAM_ID"))
+BIRDEYE_API = os.environ.get("BIRDEYE_API")
+PORT = int(os.environ.get("PORT", 10000))
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-async def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_ID, "text": text, "parse_mode": "Markdown"}
+# Flask app
+app = Flask(__name__)
+
+# Telegram bot setup
+bot = Bot(BOT_TOKEN)
+application = Application.builder().token(BOT_TOKEN).build()
+
+# Constants
+BIRDEYE_URL = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+
+# Phase 5.1: Birdeye resilience patch
+async def fetch_token_list():
     try:
+        headers = {"X-API-KEY": BIRDEYE_API}
         async with httpx.AsyncClient() as client:
-            await client.post(url, data=payload)
-    except Exception as e:
-        logger.warning(f"Telegram error: {e}")
-
-async def fetch_tokens():
-    url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers, timeout=10)
-            data = response.json()
-            if isinstance(data.get("data"), list):
-                return data["data"]
+            response = await client.get(BIRDEYE_URL, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                tokens = data.get("data")
+                if isinstance(tokens, list):
+                    return tokens
+                else:
+                    logger.warning("Birdeye returned non-list token data")
+                    return []
+            elif response.status_code == 429:
+                logger.warning("⛔ Rate limit hit. Backing off.")
+                await asyncio.sleep(15)
+                return []
             else:
-                logger.warning("Birdeye returned non-list token data")
+                logger.warning(f"Birdeye error {response.status_code}: {response.text}")
                 return []
     except Exception as e:
-        logger.warning(f"Error fetching tokens: {e}")
+        logger.error(f"Error fetching from Birdeye: {e}")
         return []
 
-def format_token_message(token, score):
-    name = token.get("name", "N/A")
-    symbol = token.get("symbol", "N/A")
-    address = token.get("address", "N/A")
-    price = token.get("priceUsd", 0)
-    volume = token.get("volume24hUsd", 0)
-    holders = token.get("holders", 0)
-    timestamp = datetime.now().strftime("%H:%M:%S")
-
-    return (
-        f"⚔️ *Alpha Alert | Phase 5*\n"
-        f"🪙 *{name}* ({symbol})\n"
-        f"💰 Price: ${price:.6f}\n"
-        f"📈 Volume (24h): ${volume:,.0f}\n"
-        f"👥 Holders: {holders}\n"
-        f"🔗 Address: `{address}`\n"
-        f"🔥 Alpha Score: {score}%\n"
-        f"🕒 Time: {timestamp}\n"
-        f"\n⚠️ Use sniper discretion. Not financial advice."
-    )
-
-def score_token(token) -> int:
-    price = token.get("priceUsd", 0)
-    volume = token.get("volume24hUsd", 0)
-    holders = token.get("holders", 0)
-
-    score = 0
-    if 0.0001 < price < 1: score += 30
-    if volume > 10000: score += 30
-    if holders and holders > 50: score += 20
-    if token.get("symbol") and len(token["symbol"]) <= 5: score += 10
-    if token.get("name") and token["name"].lower().count("dog") + token["name"].lower().count("pepe") > 0: score += 5
-
-    return min(score, 100)
-
+# Alpha scan loop
 async def monitor_market():
     logger.info("Starting market monitor...")
-    tokens = await fetch_tokens()
-    if not tokens:
-        logger.warning("No tokens returned from Birdeye.")
-        return
+    while True:
+        tokens = await fetch_token_list()
+        if not tokens:
+            logger.warning("No tokens returned from Birdeye.")
+        else:
+            logger.info(f"✅ Retrieved {len(tokens)} tokens from Birdeye")
+            # Process tokens here — filter alpha, etc.
+            # This is where you plug in your detection logic
+        await asyncio.sleep(8)
 
-    for token in tokens:
-        score = score_token(token)
-        if score >= 85:
-            msg = format_token_message(token, score)
-            await send_telegram_message(msg)
+# Webhook route
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
+    return "ok"
 
-    logger.info("Phase 5 scan complete.")
+@app.route("/")
+def index():
+    return "Solana Meme Sniper Bot Running"
+
+# Telegram command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Sniper bot is live.")
+
+application.add_handler(CommandHandler("start", start))
+
+# Main entry
+async def main():
+    await application.bot.delete_webhook()
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
+    await bot.send_message(chat_id=TELEGRAM_ID, text="🚀 Sniper bot online. Waiting for alpha...")
+    asyncio.create_task(monitor_market())
+    application.run_polling()
+
+if __name__ == '__main__':
+    asyncio.run(main())
