@@ -69,7 +69,7 @@ async def main():
     # Run sniper + Flask
     await asyncio.gather(
         sniper_loop(),
-        flask_app.run_task(host="0.0.0.0", port=PORT)
+        flask_app.run(host="0.0.0.0", port=PORT)
     )
 
 if __name__ == "__main__":
