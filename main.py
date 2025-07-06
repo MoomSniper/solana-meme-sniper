@@ -62,7 +62,7 @@ def webhook():
     data = request.get_json(force=True)
     logger.info(f"📥 Incoming Telegram update: {data}")
     update = Update.de_json(data, application.bot)
-asyncio.create_task(application.process_update(update))
+    asyncio.create_task(application.process_update(update))
     return "OK"
 
 # Run in webhook mode
