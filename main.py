@@ -9,7 +9,7 @@ from modules.solana_tracker_api import fetch_token_data
 from modules.alpha_scoring import score_token
 from modules.contract_check import run_contract_safety_check
 from modules.social_scraper import scrape_social_signals
-from modules.deep_research import run_deep_analysis
+from modules.deep_research import run_deep_research
 from modules.alert_formatter import format_alert
 from sniper import scan_and_score_market
 
