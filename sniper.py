@@ -1,91 +1,81 @@
 import asyncio
 import logging
-import httpx
 from datetime import datetime
 from pytz import timezone
+import httpx
 
-# === CONFIG ===
-TELEGRAM_ID = "6881063420"
-TIMEZONE = timezone("America/Toronto")
-SCAN_INTERVAL = 44  # seconds
-ACTIVE_HOURS = range(7, 24)  # 7AM to 11:59PM
-MIN_VOLUME = 5000
+# --- Configuration ---
+SOLANA_TRACKER_API = "https://public-api.solanatracker.io/token/"
+ACTIVE_HOURS_START = 7   # 7 AM EST
+ACTIVE_HOURS_END = 24    # 12 AM EST
+SCAN_INTERVAL_SECONDS = 44
+MIN_VOLUME = 3000
 MIN_BUYERS = 15
-MAX_MARKET_CAP = 300_000
+MIN_MCAP = 20000
 
-# === LOGGING ===
+# --- Logging ---
 logger = logging.getLogger("sniper")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO)
 
-# === CORE FUNCTION ===
-async def scan_and_score_market():
-    while True:
-        now = datetime.now(TIMEZONE)
-        if now.hour not in ACTIVE_HOURS:
-            logger.info("🌙 Sleeping hours. Sniper in rest mode.")
-            await asyncio.sleep(300)  # Sleep 5 mins
-            continue
+# --- Utility: Time Control ---
+def within_active_hours():
+    now = datetime.now(timezone("US/Eastern"))
+    return ACTIVE_HOURS_START <= now.hour < ACTIVE_HOURS_END
 
+# --- Utility: Fetch Token Info ---
+async def get_token_data(token_address):
+    async with httpx.AsyncClient(timeout=10) as client:
         try:
-            logger.info("🔍 Scanning market...")
-            tokens = await fetch_latest_tokens()
-            if not tokens:
-                logger.warning("⚠️ No tokens fetched from SolanaTracker.")
-                await asyncio.sleep(SCAN_INTERVAL)
-                continue
-
-            for token in tokens:
-                await evaluate_token(token)
-
-        except Exception as e:
-            logger.error(f"[Sniper Fatal] {e}")
-
-        await asyncio.sleep(SCAN_INTERVAL)
-
-# === FETCH TOKENS ===
-async def fetch_latest_tokens():
-    url = "https://public-api.solanatracker.io/tokens?sort=createdAt&order=desc&limit=10&offset=0"
-    headers = {"accept": "application/json"}
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(f"{SOLANA_TRACKER_API}{token_address}")
             if response.status_code == 200:
-                return response.json().get("data", [])
+                return response.json()
             else:
                 logger.warning(f"[SolanaTracker] Token fetch failed: {response.status_code}")
-                return []
-    except Exception as e:
-        logger.error(f"[SolanaTracker Error] {e}")
-        return []
+                return None
+        except Exception as e:
+            logger.error(f"[SolanaTracker] Exception: {str(e)}")
+            return None
 
-# === EVALUATE TOKEN ===
-async def evaluate_token(token):
-    try:
-        symbol = token.get("symbol", "N/A")
-        mint = token.get("mintAddress", "")
-        volume = float(token.get("volume1hQuote", 0))
-        buyers = int(token.get("txns1h", 0))
-        market_cap = int(token.get("fdv", 0))
+# --- Sniper Logic ---
+async def scan_and_score_market():
+    scanned_mints = set()
 
-        logger.info(f"🧪 {symbol} | MC: {market_cap} | Volume: {volume} | Buyers: {buyers}")
+    while True:
+        if not within_active_hours():
+            await asyncio.sleep(300)  # sleep 5 mins outside active hours
+            continue
 
-        if market_cap > MAX_MARKET_CAP:
-            return
-        if volume < MIN_VOLUME:
-            return
-        if buyers < MIN_BUYERS:
-            return
+        logger.info("🔍 Starting scan...")
 
-        # === Placeholder for Smart Wallet Logic, Hype Score, and Contract Safety ===
-        # Replace these with actual intelligence checks in deep mode
-        logger.info(f"🎯 [ALPHA] {symbol} meets all filters! Sending to Telegram...")
+        tokens_to_check = get_recent_tokens()  # Replace with real source
 
-        # await send_telegram_alert(symbol, mint, market_cap, volume, buyers)
+        for token in tokens_to_check:
+            token_address = token["address"]
 
-    except Exception as e:
-        logger.error(f"[Eval Error] Token eval failed: {e}")
+            if token_address in scanned_mints:
+                continue
 
-# === SEND TELEGRAM ALERT ===
-# async def send_telegram_alert(symbol, mint, market_cap, volume, buyers):
-#     message = f"<b>🚀 {symbol} Potential Alpha</b>\nMC: ${market_cap}\nVol: ${volume}\n👥 Buyers: {buyers}\nMint: <code>{mint}</code>"
-#     await bot.send_message(chat_id=TELEGRAM_ID, text=message, parse_mode='HTML')
+            if (token.get("volume_1h_usd", 0) < MIN_VOLUME or
+                token.get("txns_1h", {}).get("buys", 0) < MIN_BUYERS or
+                token.get("fdv", 0) < MIN_MCAP):
+                continue
+
+            coin_data = await get_token_data(token_address)
+            if not coin_data:
+                continue
+
+            logger.info(f"✅ Token {token_address} passed filters")
+
+            scanned_mints.add(token_address)
+
+        await asyncio.sleep(SCAN_INTERVAL_SECONDS)
+
+# --- Placeholder ---
+def get_recent_tokens():
+    # TEMP MOCK – replace this with actual token source (DexScreener, etc.)
+    return [{
+        "address": "So11111111111111111111111111111111111111112",
+        "volume_1h_usd": 5000,
+        "txns_1h": {"buys": 20},
+        "fdv": 25000
+    }]
