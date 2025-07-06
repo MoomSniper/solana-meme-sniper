@@ -2,12 +2,17 @@ import os
 import asyncio
 import logging
 from flask import Flask, request
-from telegram.ext import Application, CommandHandler
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, ContextTypes
 from modules.telegram_engine import setup_telegram_commands
-from sniper import scan_and_score_market
+from modules.coinhall_ws import listen_for_pairs
+from modules.solana_tracker_api import fetch_token_data
+from modules.alpha_scoring import score_token
+from modules.contract_check import run_contract_safety_check
+from modules.social_scraper import scrape_social_signals
+from modules.deep_research import run_deep_analysis
 from modules.alert_formatter import format_alert
-from telegram import Update
-from telegram.ext import ContextTypes
+from sniper import scan_and_score_market
 
 # --- Logging ---
 logging.basicConfig(level=logging.INFO)
