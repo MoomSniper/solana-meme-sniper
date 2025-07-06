@@ -1,81 +1,64 @@
-import asyncio
 import os
-import logging
+import time
 import httpx
+import logging
 from telegram import Bot
 
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 BIRDEYE_API = os.getenv("BIRDEYE_API")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-bot = None
 
+bot = Bot(token=BOT_TOKEN)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sniper")
 
-async def fetch_tokens():
-    headers = {"X-API-KEY": BIRDEYE_API}
-    url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+headers = {
+    "accept": "application/json",
+    "X-API-KEY": BIRDEYE_API
+}
+
+def send_message(text):
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json().get("data", [])
-    except httpx.HTTPStatusError as e:
-        logger.warning(f"Fetch error: {e}")
-        return []
+        bot.send_message(chat_id=TELEGRAM_ID, text=text)
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return []
+        logger.error(f"Failed to send message: {e}")
 
-def meets_criteria(token):
+def fetch_tokens():
     try:
-        txns = token.get("txns", {}).get("h1", {})
-        volume = float(token.get("volume_h1_usd", 0))
-        buys = int(txns.get("buys", 0))
-        sells = int(txns.get("sells", 0))
-        holders = int(token.get("holders", 0))
-
-        return (
-            25000 <= volume <= 500000 and
-            buys >= 25 and
-            sells <= 20 and
-            holders >= 50
-        )
+        url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+        response = httpx.get(url, headers=headers)
+        data = response.json()
+        return data.get("data", [])[:3]  # Only return top 3 tokens
     except Exception as e:
-        logger.error(f"Error checking criteria: {e}")
-        return False
+        logger.warning(f"Error fetching tokens: {e}")
+        return []
 
-async def deep_research(token):
-    name = token.get("name")
-    address = token.get("address")
-    mc = token.get("market_cap", "N/A")
-    holders = token.get("holders", "N/A")
+def monitor_market():
+    send_message("⚙️ TEST MODE: Loosened filters. Fetching up to 3 live tokens now...")
 
-    msg = (
-        f"ð Deep Research Mode Initiated
-"
-        f"Name: {name}
-"
-        f"Address: {address}
-"
-        f"Market Cap: {mc}
-"
-        f"Holders: {holders}
-"
-        f"Phase: Obsidian++ filtering in progress...
-"
-    )
-    await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+    tokens = fetch_tokens()
+    if not tokens:
+        send_message("❌ No tokens found in test scan.")
+        return
 
-async def monitor_market(_bot: Bot):
-    global bot
-    bot = _bot
-    await bot.send_message(chat_id=TELEGRAM_ID, text="â Sniper Bot is live and scanning the market.")
-    while True:
-        tokens = await fetch_tokens()
-        filtered = [t for t in tokens if meets_criteria(t)]
-        if filtered:
-            alpha = filtered[0]
-            await bot.send_message(chat_id=TELEGRAM_ID, text="ð¨ Alpha Detected â Entering Deep Research...")
-            await asyncio.sleep(90)
-            await deep_research(alpha)
-        await asyncio.sleep(12)  # Throttle to protect API
+    for token in tokens:
+        try:
+            name = token.get("name", "N/A")
+            symbol = token.get("symbol", "N/A")
+            address = token.get("address", "N/A")
+            link = f"https://birdeye.so/token/{address}?chain=solana"
+
+            send_message(
+                f"🔍 **Token Found in Test Mode**\n"
+                f"Name: {name}\n"
+                f"Symbol: {symbol}\n"
+                f"[Chart Link]({link})"
+            )
+
+            # Simulate Deep Research Mode trigger
+            send_message(
+                f"🧠 Deep Research Mode Initiated for {symbol}...\n"
+                f"🔗 {link}"
+            )
+        except Exception as e:
+            logger.warning(f"Token parse error: {e}")
