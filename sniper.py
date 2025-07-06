@@ -95,29 +95,21 @@ async def deep_scan_token(token):
         return True
     return False
 
-async def monitor_market(bot=None):
-    logger.info("Starting market monitor...")
-    tokens = await fetch_tokens()
-    if not tokens:
-        logger.warning("No tokens returned from Birdeye.")
-        return
+async def monitor_market():
+    logger.info("🔁 Market scanner started.")
 
-    for token in tokens[:3]:  # Light filtering
-        scout_msg = format_token_message(token)
-        await send_telegram_message(scout_msg)
-        await asyncio.sleep(2.5)  # Rate buffer
-        passed = await deep_scan_token(token)
+    while True:
+        tokens = await fetch_tokens()
+        if not tokens:
+            logger.warning("No tokens fetched. Waiting before retry...")
+            await asyncio.sleep(15)
+            continue
 
-        if passed:
-            # Phase 4: Exit Watch (simulated)
-            await asyncio.sleep(5)  # pretend monitoring period
-            exit_alert = (
-                f"🧠 *Exit Mastermind Alert* — {token.get('name')} ({token.get('symbol')})\n"
-                f"🔻 Volume drop detected\n"
-                f"🐋 Whales reducing positions\n"
-                f"🧯 Hype cooling fast\n"
-                f"🔴 Recommendation: *EXIT NOW* before momentum collapses."
-            )
-            await send_telegram_message(exit_alert)
+        for token in tokens[:3]:  # Still show top 3, filtered later if needed
+            msg = format_token_message(token)
+            await send_telegram_message(msg)
+
+        # Sleep to stay under rate limit (Birdeye free tier = 1 request/sec max)
+        await asyncio.sleep(20)  # Adjust to 30 if needed
 
     logger.info("Scan complete.")
