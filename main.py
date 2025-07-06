@@ -49,6 +49,7 @@ application.run_webhook(
     port=int(os.environ.get("PORT", 10000)),
     url_path=BOT_TOKEN,
     webhook_url=WEBHOOK_URL + "/" + BOT_TOKEN,
+)
 
 from flask import Flask
 import os
