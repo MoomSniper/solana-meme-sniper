@@ -17,7 +17,7 @@ headers = {
 
 async def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_ID, "text": text}
+    payload = {"chat_id": TELEGRAM_ID, "text": text, "parse_mode": "Markdown"}
     try:
         async with httpx.AsyncClient() as client:
             await client.post(url, data=payload)
@@ -32,16 +32,17 @@ async def fetch_tokens():
             if response.status_code == 429:
                 logger.warning("⛔ Rate limit hit. Backing off.")
                 return []
+
             data = response.json()
             logger.info(f"🔍 Birdeye raw response: {data}")
-            token_data = data.get("data")
 
-            if isinstance(token_data, list):
-                return token_data
-            elif isinstance(token_data, dict) and "tokens" in token_data:
-                return token_data["tokens"]
+            tokens = data.get("data")
+            if isinstance(tokens, list):
+                return tokens
+            elif isinstance(tokens, dict) and "tokens" in tokens:
+                return tokens["tokens"]
             else:
-                logger.warning("Unexpected Birdeye format. No token list found.")
+                logger.warning("⚠️ Unexpected Birdeye format. No token list found.")
                 return []
     except Exception as e:
         logger.warning(f"Error fetching tokens: {e}")
@@ -51,20 +52,24 @@ def format_token_message(token):
     name = token.get("name", "N/A")
     symbol = token.get("symbol", "N/A")
     address = token.get("address", "N/A")
-    price = token.get("priceUsd", 0.0)
-    volume = token.get("volume24hUsd", 0.0)
+    price = token.get("priceUsd", 0)
+    volume = token.get("volume24hUsd", 0)
     holders = token.get("holders", "N/A")
     timestamp = datetime.now().strftime("%H:%M:%S")
 
+    # Phase 4 Spam Filter — Send only if real alpha (volume check)
+    if volume is None or volume < 10000:
+        return None
+
     return (
-        f"⚔️ *Oblivion Scout Alert*\n"
+        f"⚔️ *Oblivion Alpha Alert*\n"
         f"🪙 Name: {name} ({symbol})\n"
         f"💰 Price: ${price:.6f}\n"
         f"📈 Volume (24h): ${volume:,.0f}\n"
         f"👥 Holders: {holders}\n"
         f"🔗 Address: `{address}`\n"
         f"🕒 Time: {timestamp}\n\n"
-        f"⚠️ Early Market Watch — Not alpha-verified"
+        f"🔥 Potential alpha candidate — track manually."
     )
 
 async def monitor_market():
@@ -74,8 +79,11 @@ async def monitor_market():
         logger.warning("No tokens returned from Birdeye.")
         return
 
-    for token in tokens[:2]:  # limit results to top 2 for safety
+    alerts_sent = 0
+    for token in tokens[:15]:  # Expand to top 15 for Phase 4 filtering
         msg = format_token_message(token)
-        await send_telegram_message(msg)
+        if msg:
+            await send_telegram_message(msg)
+            alerts_sent += 1
 
-    logger.info("Scan complete.")
+    logger.info(f"Market scan complete. {alerts_sent} alerts sent.")
