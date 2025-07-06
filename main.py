@@ -1,55 +1,43 @@
 import os
-import logging
 import asyncio
+import logging
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from sniper import start_sniping
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, ContextTypes
+from sniper import start_sniping  # Make sure this is correct
 
-# === Environment Vars ===
+# === Logging Setup ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("main")
+
+# === Environment ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
 
-# === Logger Setup ===
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# === Flask App Setup ===
-app = Flask(__name__)
+# === Telegram Setup ===
 bot = Bot(token=BOT_TOKEN)
+app = Flask(__name__)
 
-# === Telegram Bot Setup ===
-application = Application.builder().token(BOT_TOKEN).build()
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Sniper bot is live and hunting for alpha.")
-
-application.add_handler(CommandHandler("start", start))
-
+# === Flask Routes ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), bot)
-        application.update_queue.put_nowait(update)
-        return "OK", 200
+    update = Update.de_json(request.get_json(force=True), bot)
+    asyncio.get_event_loop().create_task(handle_update(update))
+    logger.info(f"✅ Incoming update: {update.message.text if update.message else 'No message'}")
+    return "OK"
 
-# === Run Everything ===
-async def run():
-    logger.info("🚀 Setting webhook...")
-    await bot.delete_webhook()
-    await bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
+@app.route("/", methods=["GET"])
+def home():
+    return "Sniper bot is live."
 
-    logger.info("🚀 Starting market monitor...")
-    asyncio.create_task(start_sniping())
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()  # Required by Telegram framework internals
-    await application.updater.idle()
+# === Async handler ===
+async def handle_update(update: Update):
+    if update.message and update.message.text == "/start":
+        await bot.send_message(chat_id=update.effective_chat.id, text="✅ Sniper Bot ready.")
+        logger.info("🚀 /start command received. Starting sniper loop...")
+        await start_sniping()
 
+# === Run App ===
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(run())
-    app.run(host="0.0.0.0", port=PORT)
+    logger.info("🔧 Launching Flask app...")
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
