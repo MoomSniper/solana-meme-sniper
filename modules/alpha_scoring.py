@@ -33,4 +33,3 @@ def score_token(token):
         "buyers": 22,
         "score": 91.5
     }
-    }
