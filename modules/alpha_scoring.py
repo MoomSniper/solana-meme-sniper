@@ -1,10 +1,25 @@
-def calculate_alpha_score(token_data, wallet_score, rug_score, social_score):
-    total = (
-        (token_data["volume_1h"] / 1000) * 0.2 +
-        wallet_score["score"] * 0.3 +
-        (100 - rug_score["score"]) * 0.2 +
-        social_score * 0.3
-    )
+def calculate_alpha_score(data, wallet_score, rug_score, social_score):
+    score = 0
 
-    confidence = min(100, round(total, 2))
-    return confidence
+    # Volume
+    if 5000 <= data["volume"] <= 300000:
+        score += 30
+
+    # Buyers
+    if 10 <= data["buyers"] <= 150:
+        score += 20
+
+    # Market Cap
+    if data["mc"] and data["mc"] < 300000:
+        score += 20
+
+    # Smart Wallets
+    score += wallet_score  # up to +10
+
+    # Contract Safety
+    score += rug_score  # up to +10
+
+    # Social Hype
+    score += social_score  # up to +10
+
+    return score
