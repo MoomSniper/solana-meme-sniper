@@ -60,7 +60,9 @@ def index():
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    application.update_queue.put_nowait(Update.de_json(data, application.bot))
+    logger.info(f"📥 Incoming Telegram update: {data}")
+    update = Update.de_json(data, application.bot)
+asyncio.create_task(application.process_update(update))
     return "OK"
 
 # Run in webhook mode
