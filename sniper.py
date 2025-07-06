@@ -27,12 +27,14 @@ async def fetch_tokens():
             response = await client.get(url, headers=headers)
             response.raise_for_status()
             data = response.json()
-            logger.info(f"Birdeye raw data: {data}")  # 👈 This will print the full response
-            token_list = data.get("data", [])
-            if not isinstance(token_list, list):
-                logger.warning("Birdeye returned non-list token data")
+            logger.info(f"Birdeye token response structure: {data}")
+            
+            tokens = data.get("data", {}).get("tokens", [])
+            if not isinstance(tokens, list):
+                logger.warning("Birdeye returned unexpected format for tokens")
                 return []
-            return token_list[:3]
+            
+            return tokens[:3]  # 🔥 You can loosen this cap for more alerts
     except Exception as e:
         logger.warning(f"Error fetching tokens: {e}")
         return []
