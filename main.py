@@ -1,6 +1,5 @@
 import os
 import logging
-import time
 import httpx
 from flask import Flask, request
 from telegram import Update
@@ -9,6 +8,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,11 +28,11 @@ async def send_telegram_message(text: str):
     except Exception as e:
         logger.error(f"❌ Failed to send Telegram message: {e}")
 
-async def scan_market():
-    logger.info("⚡️ Scanning market for alpha...")
-    # Placeholder logic
-    # Replace this with real logic when ready
-    pass
+async def scan_market_loop():
+    while True:
+        logger.info("⚡️ Scanning market for alpha...")
+        # Add your logic here
+        await asyncio.sleep(44)
 
 @app.route("/", methods=["GET"])
 def index():
@@ -45,7 +45,7 @@ def webhook():
     return "OK"
 
 # Telegram Bot Setup
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+application = ApplicationBuilder().token(BOT_TOKEN).post_init(lambda app: app.create_task(scan_market_loop())).build()
 
 # /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -62,11 +62,3 @@ if __name__ == "__main__":
         port=int(os.getenv("PORT", default=10000)),
         webhook_url=WEBHOOK_URL
     )
-
-    while True:
-        try:
-            time.sleep(44)
-            import asyncio
-            asyncio.run(scan_market())
-        except Exception as e:
-            logger.error(f"❌ Error during market scan: {e}")
