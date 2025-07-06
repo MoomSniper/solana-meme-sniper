@@ -1,74 +1,64 @@
-import os
 import asyncio
-import aiohttp
 import logging
+import httpx
+import pytz
 from datetime import datetime
-from pytz import timezone
+from utils.solana_tracker import fetch_latest_tokens, fetch_token_details
+from utils.alpha_score import calculate_alpha_score
+from utils.social_scanner import get_social_score
+from utils.smart_wallets import check_smart_wallet_activity
 
 logger = logging.getLogger("sniper")
 logging.basicConfig(level=logging.INFO)
 
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
+SCAN_INTERVAL = 44  # ~1963 scans/day = ~60,953/month (only during 12hr/day keeps us under 30–40k)
+SLEEP_HOURS = (0, 1, 2, 3, 4, 5, 6)  # Do not scan from 12am to 7am
 
-# Scanning config
-SCAN_INTERVAL = 45  # seconds between scans
-SLEEP_HOURS = range(0, 7)  # Do not scan from 12am–7am EST
-
-async def fetch_token_data(session, token_address):
-    url = f"https://public-api.solanatracker.io/token/{token_address}"
-    try:
-        async with session.get(url, timeout=5) as response:
-            if response.status == 200:
-                return await response.json()
-            elif response.status == 404:
-                logger.warning("[SolanaTracker] Token not found: 404")
-            else:
-                logger.error(f"[SolanaTracker] Failed: HTTP {response.status}")
-    except Exception as e:
-        logger.error(f"[SolanaTracker] Error fetching token {token_address}: {e}")
-    return None
-
-def is_sleep_time():
-    now = datetime.now(timezone("US/Eastern"))
-    return now.hour in SLEEP_HOURS
-
-def score_coin(data):
-    try:
-        score = 0
-        holders = data.get("holders", 0)
-        liquidity = data.get("liquidity", {}).get("usd", 0)
-        mc = data.get("market_cap", {}).get("usd", 0)
-
-        if holders >= 100:
-            score += 30
-        if liquidity > 5000:
-            score += 30
-        if mc and mc < 300000:
-            score += 40
-
-        return min(score, 100)
-    except Exception as e:
-        logger.error(f"[Scoring Error] {e}")
-        return 0
+def in_active_hours():
+    now = datetime.now(pytz.timezone("America/Toronto"))
+    return now.hour not in SLEEP_HOURS
 
 async def scan_and_score_market():
     while True:
-        if is_sleep_time():
-            logger.info("⏸ Sleeping hours. Pausing scans.")
-            await asyncio.sleep(60 * 10)
+        if not in_active_hours():
+            logger.info("🌙 [Sleep Mode] Skipping scan during low hours.")
+            await asyncio.sleep(300)
             continue
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                test_token = "So11111111111111111111111111111111111111112"
-                logger.info(f"🔍 Scanning token: {test_token}")
-                data = await fetch_token_data(session, test_token)
-                if data:
-                    score = score_coin(data)
-                    logger.info(f"✅ Score: {score}")
-                else:
-                    logger.warning("⚠️ No data returned.")
-        except Exception as e:
-            logger.error(f"[Scan Error] {e}")
+        logger.info("🔍 [OBSIDIAN MODE] Scanning Solana Tracker for fresh tokens...")
+        tokens = await fetch_latest_tokens()
+        if not tokens:
+            logger.warning("⚠️ No tokens pulled.")
+            await asyncio.sleep(SCAN_INTERVAL)
+            continue
+
+        for token in tokens:
+            address = token.get("address")
+            if not address:
+                continue
+
+            logger.info(f"🔎 Evaluating token: {address}")
+            details = await fetch_token_details(address)
+            if not details:
+                logger.warning(f"⚠️ No data for {address}")
+                continue
+
+            alpha_score = calculate_alpha_score(details)
+            if alpha_score < 85:
+                logger.info(f"❌ {address} scored {alpha_score} – skipping.")
+                continue
+
+            social_score = get_social_score(details)
+            smart_flag = check_smart_wallet_activity(details)
+
+            confidence = round((alpha_score * 0.5) + (social_score * 5) + (30 if smart_flag else 0), 1)
+            projected_x = round(confidence / 10, 1)
+
+            logger.info(f"🔥 ALPHA: {address}")
+            logger.info(f"✅ Alpha Score: {alpha_score}")
+            logger.info(f"📢 Social Hype: {social_score}/10")
+            logger.info(f"💸 Smart Wallets: {'Yes' if smart_flag else 'No'}")
+            logger.info(f"🎯 Entry Confidence: {confidence}%")
+            logger.info(f"🚀 Projected Potential: {projected_x}x")
 
         await asyncio.sleep(SCAN_INTERVAL)
