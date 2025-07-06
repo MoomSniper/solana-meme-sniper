@@ -7,13 +7,10 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
-    MessageHandler,
-    filters,
 )
 
 from sniper import scan_and_score_market
-from modules.telegram_engine import send_message  # make sure this exists
-from modules.commands import setup_telegram_commands  # make sure this exists
+from modules.commands import setup_telegram_commands  # Make sure this exists
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
@@ -39,7 +36,7 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("status", status))
 setup_telegram_commands(application)
 
-# Background scanner every 44s
+# Background scanner every 44 seconds
 async def run_scanner():
     await asyncio.sleep(10)
     while True:
@@ -57,7 +54,7 @@ async def telegram_webhook():
     await application.process_update(update)
     return "OK"
 
-# Start everything
+# Start all systems
 async def main():
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
     logger.info("✅ Telegram webhook set.")
@@ -65,7 +62,6 @@ async def main():
     asyncio.create_task(run_scanner())
     await application.initialize()
     await application.start()
-    await application.updater.start_polling()
     app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
