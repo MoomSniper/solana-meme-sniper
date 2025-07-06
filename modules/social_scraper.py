@@ -1,52 +1,33 @@
-import re
+import aiohttp
 import logging
-import random
+import os
+
+SOCIAL_API = os.getenv("SOCIAL_API_KEY")  # Placeholder if you use a real one later
 
 logger = logging.getLogger("social")
 
-# === Simulated Lightweight Social Scraper ===
-def scrape_social_hype(token_symbol, token_name):
+async def fetch_social_stats(token_name):
     try:
-        logger.info(f"[SOCIAL] Scraping X/Telegram for {token_symbol}...")
+        # Simulated social traction values (replace with real APIs later if needed)
+        async with aiohttp.ClientSession() as session:
+            # Placeholder: You'd connect real API here if needed
+            # Simulate hype score based on name
+            response = {
+                "twitter_mentions": 145,
+                "telegram_mentions": 88,
+                "bot_ratio": 0.08,
+                "velocity": "🔥🔥🔥",
+                "hype_score": 92
+            }
 
-        # Simulated results (randomized for now — upgrade with real API later)
-        telegram_mentions = random.randint(50, 500)
-        twitter_mentions = random.randint(80, 700)
-        bot_ratio = random.uniform(0.05, 0.3)  # % of suspected bots
-
-        total_mentions = telegram_mentions + twitter_mentions
-        real_engagement = int(total_mentions * (1 - bot_ratio))
-
-        # Hype Score (basic)
-        score = 0
-        if real_engagement > 300:
-            score += 40
-        elif real_engagement > 150:
-            score += 25
-        else:
-            score += 10
-
-        if bot_ratio < 0.1:
-            score += 30
-        elif bot_ratio < 0.2:
-            score += 20
-
-        logger.info(f"[SOCIAL] Real Mentions: {real_engagement}, Bot %: {round(bot_ratio*100, 1)}%")
-
-        return {
-            "score": score,
-            "real_mentions": real_engagement,
-            "bot_percent": round(bot_ratio * 100, 1),
-            "telegram": telegram_mentions,
-            "twitter": twitter_mentions
-        }
+        return response
 
     except Exception as e:
-        logger.warning(f"[SOCIAL ERROR] {e}")
+        logger.warning(f"[Social Scraper Error] {e}")
         return {
-            "score": 0,
-            "real_mentions": 0,
-            "bot_percent": 100.0,
-            "telegram": 0,
-            "twitter": 0
+            "twitter_mentions": 0,
+            "telegram_mentions": 0,
+            "bot_ratio": 1.0,
+            "velocity": "😴",
+            "hype_score": 0
         }
