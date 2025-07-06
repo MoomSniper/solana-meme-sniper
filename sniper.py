@@ -51,7 +51,11 @@ async def deep_research(token):
     holders = token.get("holders", "N/A")
 
     msg = (
-        f"ð Deep Research Mode Initiated
+        f"""🔍 Deep Research Mode Initiated for {token_name} ({token_address})
+
+Running contract safety checks, social engagement scans, holder analysis, whale behavior, and multiplier prediction...
+"""
+        
 "
         f"Name: {name}
 "
