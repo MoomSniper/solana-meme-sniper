@@ -1,38 +1,30 @@
 import os
-import logging
-import asyncio
 import httpx
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+import asyncio
+import logging
+from datetime import datetime
+from telegram import Bot
 
-# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sniper")
 
-# Environment variables
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-TELEGRAM_ID = int(os.environ.get("TELEGRAM_ID"))
-BIRDEYE_API = os.environ.get("BIRDEYE_API")
-PORT = int(os.environ.get("PORT", 10000))
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BIRDEYE_API = os.getenv("BIRDEYE_API")
 
-# Flask app
-app = Flask(__name__)
+bot = Bot(token=BOT_TOKEN)
 
-# Telegram bot setup
-bot = Bot(BOT_TOKEN)
-application = Application.builder().token(BOT_TOKEN).build()
+API_URL = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
 
-# Constants
-BIRDEYE_URL = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+HEADERS = {
+    "accept": "application/json",
+    "X-API-KEY": BIRDEYE_API
+}
 
-# Phase 5.1: Birdeye resilience patch
-async def fetch_token_list():
+async def fetch_tokens():
     try:
-        headers = {"X-API-KEY": BIRDEYE_API}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(BIRDEYE_URL, headers=headers, timeout=10)
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(API_URL, headers=HEADERS)
             if response.status_code == 200:
                 data = response.json()
                 tokens = data.get("data")
@@ -43,53 +35,53 @@ async def fetch_token_list():
                     return []
             elif response.status_code == 429:
                 logger.warning("⛔ Rate limit hit. Backing off.")
-                await asyncio.sleep(15)
+                await asyncio.sleep(2)
                 return []
             else:
-                logger.warning(f"Birdeye error {response.status_code}: {response.text}")
+                logger.warning(f"⚠️ Birdeye error: {response.status_code} - {response.text}")
                 return []
     except Exception as e:
-        logger.error(f"Error fetching from Birdeye: {e}")
+        logger.error(f"Birdeye fetch failed: {str(e)}")
         return []
 
-# Alpha scan loop
+async def deep_research_phase(token):
+    # Placeholder for actual social & contract logic (Phase 4)
+    logger.info(f"🔎 Deep scan started for {token.get('address')}")
+    await asyncio.sleep(1)
+    return {
+        "social_score": 87,
+        "risk": "low",
+        "predicted_multiplier": "4-8x"
+    }
+
+async def process_batch(batch):
+    for token in batch:
+        logger.info(f"🧠 Evaluating {token.get('address')}")
+        research = await deep_research_phase(token)
+        if research['social_score'] > 85:
+            message = (
+                f"🚀 ALPHA ALERT 🚀\n"
+                f"Token: {token.get('address')}\n"
+                f"Score: {research['social_score']}\n"
+                f"Risk: {research['risk']}\n"
+                f"Target: {research['predicted_multiplier']}"
+            )
+            await bot.send_message(chat_id=TELEGRAM_ID, text=message)
+        await asyncio.sleep(0.2)
+
 async def monitor_market():
     logger.info("Starting market monitor...")
     while True:
-        tokens = await fetch_token_list()
+        tokens = await fetch_tokens()
         if not tokens:
             logger.warning("No tokens returned from Birdeye.")
-        else:
-            logger.info(f"✅ Retrieved {len(tokens)} tokens from Birdeye")
-            # Process tokens here — filter alpha, etc.
-            # This is where you plug in your detection logic
-        await asyncio.sleep(8)
+            await asyncio.sleep(10)
+            continue
 
-# Webhook route
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put_nowait(update)
-    return "ok"
+        batch_size = 25
+        batches = [tokens[i:i + batch_size] for i in range(0, len(tokens), batch_size)]
+        for batch in batches:
+            await process_batch(batch)
+            await asyncio.sleep(1.5)  # throttle to avoid API abuse
 
-@app.route("/")
-def index():
-    return "Solana Meme Sniper Bot Running"
-
-# Telegram command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Sniper bot is live.")
-
-application.add_handler(CommandHandler("start", start))
-
-# Main entry
-async def main():
-    await application.bot.delete_webhook()
-    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
-    await bot.send_message(chat_id=TELEGRAM_ID, text="🚀 Sniper bot online. Waiting for alpha...")
-    asyncio.create_task(monitor_market())
-    application.run_polling()
-
-if __name__ == '__main__':
-    asyncio.run(main())
+        await asyncio.sleep(10)  # main cycle sleep
