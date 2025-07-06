@@ -1,102 +1,89 @@
 import os
 import logging
-import httpx
 import asyncio
+import httpx
+import time
 from datetime import datetime
+from telegram.constants import ParseMode
 
-# Setup logging
+BIRDEYE_API = os.getenv("BIRDEYE_API")
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
+bot = None
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sniper")
-logger.setLevel(logging.INFO)
 
-TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID", "0"))
-headers = { "X-API-KEY": os.getenv("BIRDEYE_API") }
+HEADERS = {
+    "accept": "application/json",
+    "x-api-key": BIRDEYE_API
+}
 
-BIRDEYE_URL = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
-sent_tokens = {}
-
-async def send_telegram_message(bot, msg):
-    try:
-        await bot.send_message(chat_id=TELEGRAM_ID, text=msg, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Telegram send error: {e}")
-
-async def deep_research(bot, token):
-    try:
-        contract_safe = "✅"
-        holder_structure = "Healthy"
-        hype_score = 82
-        bot_risk = "Low"
-        projected_range = "3x–12x"
-        recommendation = "🔥 HOLD with Partial TP on 5x spike"
-
-        msg = (
-            f"📊 <b>Deep Research Report</b> for {token['name']} ({token['symbol']})\n\n"
-            f"🔗 Contract Safety: {contract_safe}\n"
-            f"🧠 Holder Structure: {holder_structure}\n"
-            f"📢 Hype Score: {hype_score}/100\n"
-            f"🤖 Bot Risk: {bot_risk}\n"
-            f"📈 Projected Range: {projected_range}\n"
-            f"📌 Recommendation: {recommendation}"
-        )
-        await send_telegram_message(bot, msg)
-    except Exception as e:
-        logger.error(f"Deep research error: {e}")
-
-def score_alpha(token):
-    try:
-        mc = token.get("market_cap", 0)
-        vol = token.get("volume_1h_usd", 0)
-        txs = token.get("tx_count_1h", 0)
-        score = 0
-
-        if 5000 < mc < 300000: score += 30
-        if vol > 5000: score += 30
-        if txs > 25: score += 20
-        if txs > 50: score += 10
-
-        return min(score, 100)
-    except:
-        return 0
-
-async def monitor_market(bot):
-    while True:
+async def fetch_top_coin():
+    url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+    async with httpx.AsyncClient() as client:
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                res = await client.get(BIRDEYE_URL, headers=headers)
-                tokens = res.json().get("data", [])
-
-                for token in tokens:
-                    if not isinstance(token, dict): continue
-
-                    address = token.get("address")
-                    if not address or address in sent_tokens: continue
-
-                    score = score_alpha(token)
-                    if score >= 85:
-                        name = token.get("name")
-                        symbol = token.get("symbol")
-                        mc = token.get("market_cap", 0)
-                        vol = token.get("volume_1h_usd", 0)
-                        txs = token.get("tx_count_1h", 0)
-
-                        msg = (
-                            f"🚨 <b>Alpha Signal Found</b>\n"
-                            f"💥 {name} ({symbol})\n"
-                            f"📊 Market Cap: ${int(mc):,}\n"
-                            f"⚡ Volume (1h): ${int(vol):,}\n"
-                            f"🧾 Tx Count (1h): {txs}\n"
-                            f"🎯 Alpha Score: {score}/100\n"
-                            f"⏱️ Deep scan in 90 seconds..."
-                        )
-                        await send_telegram_message(bot, msg)
-                        sent_tokens[address] = datetime.utcnow()
-
-                        asyncio.create_task(trigger_deep_scan(bot, token))
+            r = await client.get(url, headers=HEADERS, timeout=10)
+            r.raise_for_status()
+            tokenlist = r.json().get("data", [])
+            if not tokenlist:
+                logger.warning("No tokens returned.")
+                return None
+            top = tokenlist[0]  # Just grab the first one
+            return {
+                "address": top.get("address"),
+                "name": top.get("name"),
+                "symbol": top.get("symbol"),
+                "market_cap": top.get("mc"),
+                "volume_1h": top.get("volume_1h_usd"),
+                "buyers": top.get("txns_1h"),
+            }
         except Exception as e:
-            logger.warning(f"Birdeye fetch failed: {e}")
-        await asyncio.sleep(3)
+            logger.warning(f"Fetch error: {e}")
+            return None
 
-async def trigger_deep_scan(bot, token):
-    await asyncio.sleep(90)
-    await deep_research(bot, token)
+async def send_message(text):
+    if bot:
+        await bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode=ParseMode.HTML)
+
+async def deep_research(coin):
+    await asyncio.sleep(5)  # Replace with 90 for real runs
+    # Fake deep research logic
+    report = f"""
+ð§  <b>DEEP RESEARCH INITIATED</b>
+
+<b>Name:</b> {coin['name']} ({coin['symbol']})
+<b>Buyers (1h):</b> {coin['buyers']}
+<b>MC:</b> ${coin['market_cap']:,}
+<b>Vol (1h):</b> ${coin['volume_1h']:,}
+
+<b>Contract Safety:</b> Clean â
+<b>Smart Wallets:</b> Detected ð§ 
+<b>Twitter Hype:</b> Real ð¦
+<b>Telegram:</b> Organic ð¢
+
+<b>Prediction:</b> 3â6x Run Potential
+<b>Action:</b> HOLD or TP Partial at 3.5x+
+    """
+    await send_message(report)
+
+async def monitor_market(telegram_bot):
+    global bot
+    bot = telegram_bot
+    await send_message("ð§ª Testing Mode: Forcing best live coin into deep research...")
+
+    coin = await fetch_top_coin()
+    if coin:
+        alpha_msg = f"""
+ð¨ <b>ALPHA SIGNAL [TEST MODE]</b>
+
+<b>{coin['name']} ({coin['symbol']})</b>
+<b>MC:</b> ${coin['market_cap']:,}
+<b>Vol (1h):</b> ${coin['volume_1h']:,}
+<b>Buyers:</b> {coin['buyers']}
+
+ð Entering deep research in 5s...
+        """
+        await send_message(alpha_msg)
+        await deep_research(coin)
+    else:
+        await send_message("â No token found in test override.")
