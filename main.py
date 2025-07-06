@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from sniper import monitor_market
 
-# Setup logging
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ nest_asyncio.apply()
 application = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sniper Bot is active and listening.")
+    await update.message.reply_text("🚀 Sniper Bot is active.")
 
 application.add_handler(CommandHandler("start", start))
 
@@ -43,19 +43,21 @@ if __name__ == "__main__":
     import httpx
 
     async def setup():
+        # Set webhook
         async with httpx.AsyncClient() as client:
             await client.post(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
             await client.post(
                 f"https://api.telegram.org/bot{TOKEN}/setWebhook",
                 params={"url": f"{WEBHOOK_URL}/{TOKEN}"}
             )
+
         await application.initialize()
         logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{TOKEN}")
 
-        # ✅ Start Flask in a background thread
+        # Start Flask in background
         threading.Thread(target=run_flask, daemon=True).start()
 
-        # ✅ Run the sniper scanner loop forever
-        await monitor_market(application.bot)
+        # Run sniper scan
+        await monitor_market()
 
     asyncio.run(setup())
