@@ -1,41 +1,80 @@
-import httpx
+import os
 import logging
 import asyncio
+import httpx
+from flask import Flask, request
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-BIRDEYE_API_KEY = "5d395eeeae754e048cd34ed07a72e2e1"
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-async def get_token_list():
-    url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
-    headers = {
-        "X-API-KEY": BIRDEYE_API_KEY,
-        "accept": "application/json"
-    }
+# Config
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BIRDEYE_API = os.getenv("BIRDEYE_API", "e3c36a11a7614498b29940e077b1f230")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 10000))
 
-    try:
-        response = httpx.get(url, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            print("🔍 Raw Birdeye response:", data)  # LOG STRUCTURE
-            token_data = data.get("data")
+app = Flask(__name__)
 
-            if isinstance(token_data, list):
-                logging.info(f"✅ Token list received: {len(token_data)} tokens")
-                return token_data
-            else:
-                logging.warning("❌ Birdeye returned non-list token data")
-                return []
+# Initialize Telegram Bot
+bot = Bot(token=BOT_TOKEN)
 
-        else:
-            logging.warning(f"❌ Birdeye API error {response.status_code}: {response.text}")
-            return []
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Bot is live and ready to snipe.")
 
-    except Exception as e:
-        logging.error(f"❌ Exception during token list fetch: {e}")
-        return []
-
+# Define your CU-safe sniper scan logic
 async def monitor_market():
-    while True:
-        tokens = await get_token_list()
-        logging.info(f"📊 Monitoring {len(tokens)} tokens...")
-        # Placeholder — future logic goes here
-        await asyncio.sleep(10)
+    url = f"https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+    headers = {"X-API-KEY": BIRDEYE_API}
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                response = await client.get(url, headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data.get("data"), list):
+                        logger.info(f"📊 Monitoring {len(data['data'])} tokens...")
+                    else:
+                        logger.warning("❌ Birdeye returned non-list token data")
+                elif response.status_code == 400 and "usage limit exceeded" in response.text.lower():
+                    logger.error("💥 Birdeye CU limit hit. Halting scan.")
+                    break
+                else:
+                    logger.warning(f"⚠️ Birdeye API error {response.status_code}: {response.text}")
+            except Exception as e:
+                logger.error(f"❌ Exception: {e}")
+            await asyncio.sleep(60)  # CU-safe interval
+
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
+    return "OK"
+
+@app.route("/")
+def root():
+    return "Bot is running."
+
+async def main():
+    global application
+    application = Application.builder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+
+    # Set webhook
+    await bot.delete_webhook()
+    await bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}")
+
+    # Start sniper logic
+    logger.info("🚀 Starting market monitor...")
+    asyncio.create_task(monitor_market())
+
+    await application.initialize()
+    await application.start()
+
+if __name__ == '__main__':
+    asyncio.run(main())
+    app.run(host="0.0.0.0", port=PORT)
