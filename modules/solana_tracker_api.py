@@ -1,37 +1,20 @@
-import httpx
 import os
+import httpx
 import logging
 
-SOLANA_TRACKER_API = os.getenv("SOLANA_TRACKER_API")
-BASE_URL = "https://public-api.solanatracker.io/tokens"
+SOLANA_TRACKER_API = "https://public-api.solanatracker.io/token"
+HEADERS = {"accept": "application/json"}
 
-headers = {
-    "accept": "application/json",
-    "authorization": f"Bearer {SOLANA_TRACKER_API}"
-}
-
-async def fetch_token_data(limit=50):
+async def fetch_token_data(mint: str):
     try:
-        url = f"{BASE_URL}?sort=createdAt&order=desc&limit={limit}&offset=0"
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            tokens = response.json().get("data", [])
-            result = []
-            for token in tokens:
-                result.append({
-                    "name": token.get("name"),
-                    "symbol": token.get("symbol"),
-                    "address": token.get("address"),
-                    "market_cap": token.get("marketCap", 0),
-                    "volume": token.get("volume24h", 0),
-                    "holders": token.get("holders", 0),
-                    "created_at": token.get("createdAt"),
-                    "liquidity_locked": token.get("liquidityLocked", False),
-                    "slug": token.get("slug")
-                })
-            logging.info(f"[SOLANA TRACKER] ✅ Fetched {len(result)} tokens")
-            return result
+        url = f"{SOLANA_TRACKER_API}/{mint}"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=HEADERS)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logging.error(f"[SOLANA TRACKER] ❌ Error fetching token {mint}: {response.status_code}")
+                return None
     except Exception as e:
-        logging.error(f"[SOLANA TRACKER] ❌ Error fetching tokens: {e}")
-        return []
+        logging.error(f"[SOLANA TRACKER] ❌ Exception: {e}")
+        return None
