@@ -17,11 +17,7 @@ headers = {
 
 async def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_ID,
-        "text": text,
-        "parse_mode": "Markdown"
-    }
+    payload = {"chat_id": TELEGRAM_ID, "text": text}
     try:
         async with httpx.AsyncClient() as client:
             await client.post(url, data=payload)
@@ -35,14 +31,9 @@ async def fetch_tokens():
             response = await client.get(url, headers=headers, timeout=10)
             if response.status_code == 429:
                 logger.warning("⛔ Rate limit hit. Backing off.")
-                await asyncio.sleep(15)  # wait before next scan
                 return []
             data = response.json()
-            if isinstance(data.get("data"), list):
-                return data["data"]
-            else:
-                logger.warning(f"Birdeye response format unexpected: {data}")
-                return []
+            return data.get("data", []) if isinstance(data.get("data"), list) else []
     except Exception as e:
         logger.warning(f"Error fetching tokens: {e}")
         return []
@@ -64,52 +55,18 @@ def format_token_message(token):
         f"👥 Holders: {holders}\n"
         f"🔗 Address: `{address}`\n"
         f"🕒 Time: {timestamp}\n\n"
-        f"⚠️ Not alpha-verified. Live scout only."
+        f"⚠️ Early Market Watch — Not alpha-verified"
     )
 
-async def deep_scan_token(token):
-    address = token.get("address")
-    name = token.get("name")
-    symbol = token.get("symbol")
-
-    # Simulated analysis logic
-    contract_safe = True
-    top_wallets_risky = False
-    hype_score = 76
-    projected_multiplier = "3x–7x"
-    bot_risk = "Low"
-
-    if hype_score >= 75 and contract_safe and not top_wallets_risky:
-        msg = (
-            f"🔬 *Deep Scan Complete* — {name} ({symbol})\n"
-            f"🔐 Contract Safe: ✅\n"
-            f"👑 Top Wallet Risk: ⚠️ Mild\n"
-            f"📢 Hype Score (Twitter + TG): {hype_score}/100\n"
-            f"📊 Projected Multiplier: {projected_multiplier}\n"
-            f"🤖 Bot Risk Level: {bot_risk}\n"
-            f"📍 Address: `{address}`\n"
-            f"—\n"
-            f"⚠️ Final Verdict: *HOLD w/ Partial TP if it spikes fast*"
-        )
-        await send_telegram_message(msg)
-        return True
-    return False
-
 async def monitor_market():
-    logger.info("🔁 Market scanner started.")
+    logger.info("Starting market monitor...")
+    tokens = await fetch_tokens()
+    if not tokens:
+        logger.warning("No tokens returned from Birdeye.")
+        return
 
-    while True:
-        tokens = await fetch_tokens()
-        if not tokens:
-            logger.warning("No tokens fetched. Waiting before retry...")
-            await asyncio.sleep(15)
-            continue
-
-        for token in tokens[:3]:  # Still show top 3, filtered later if needed
-            msg = format_token_message(token)
-            await send_telegram_message(msg)
-
-        # Sleep to stay under rate limit (Birdeye free tier = 1 request/sec max)
-        await asyncio.sleep(20)  # Adjust to 30 if needed
+    for token in tokens[:2]:  # limit results to top 2 for safety
+        msg = format_token_message(token)
+        await send_telegram_message(msg)
 
     logger.info("Scan complete.")
