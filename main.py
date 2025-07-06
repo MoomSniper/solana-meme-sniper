@@ -49,9 +49,9 @@ async def run_scanner():
 
 # Webhook endpoint
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-async def telegram_webhook():
+def telegram_webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
+    asyncio.run(application.process_update(update))
     return "OK"
 
 # Init everything
