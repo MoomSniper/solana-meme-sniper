@@ -11,7 +11,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 
 # === Config ===
-DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/pairs/solana"
+DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/pairs"
 CHECK_INTERVAL = 2  # seconds between scans
 SEEN_LIMIT = 10000  # memory cap
 
