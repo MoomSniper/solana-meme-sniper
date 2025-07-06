@@ -33,7 +33,16 @@ async def fetch_tokens():
                 logger.warning("⛔ Rate limit hit. Backing off.")
                 return []
             data = response.json()
-            return data.get("data", []) if isinstance(data.get("data"), list) else []
+            logger.info(f"🔍 Birdeye raw response: {data}")
+            token_data = data.get("data")
+
+            if isinstance(token_data, list):
+                return token_data
+            elif isinstance(token_data, dict) and "tokens" in token_data:
+                return token_data["tokens"]
+            else:
+                logger.warning("Unexpected Birdeye format. No token list found.")
+                return []
     except Exception as e:
         logger.warning(f"Error fetching tokens: {e}")
         return []
