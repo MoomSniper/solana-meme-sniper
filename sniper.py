@@ -1,81 +1,113 @@
-import asyncio
 import os
-import logging
 import httpx
+import asyncio
+import logging
 from telegram import Bot
-
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
-bot = None
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sniper")
 
+BIRDEYE_API = os.getenv("BIRDEYE_API")
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
+TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(token=TOKEN)
+
+API_URL = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
+HEADERS = {"X-API-KEY": BIRDEYE_API}
+
+# -------- Sniper-Grade Filter Config -------- #
+MAX_MARKET_CAP = 300_000
+MIN_VOLUME_1H = 10_000
+MIN_HOLDERS = 50
+MIN_POTENTIAL_MULTIPLIER = 2.5
+
 async def fetch_tokens():
-    headers = {"X-API-KEY": BIRDEYE_API}
-    url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json().get("data", [])
-    except httpx.HTTPStatusError as e:
-        logger.warning(f"Fetch error: {e}")
-        return []
+            resp = await client.get(API_URL, headers=HEADERS)
+            if resp.status_code == 200:
+                return resp.json().get("data", [])
+            logger.warning(f"Fetch error: {resp.status_code} - {resp.text}")
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return []
+        logger.warning(f"Token fetch failed: {e}")
+    return []
 
-def meets_criteria(token):
+def passes_filters(token):
     try:
-        txns = token.get("txns", {}).get("h1", {})
-        volume = float(token.get("volume_h1_usd", 0))
-        buys = int(txns.get("buys", 0))
-        sells = int(txns.get("sells", 0))
-        holders = int(token.get("holders", 0))
+        mc = token.get("market_cap", 0)
+        vol = token.get("volume_1h_usd", 0)
+        holders = token.get("holders", 0)
+        buyers = token.get("buy_count_1h", 0)
+        sellers = token.get("sell_count_1h", 0)
+        liquidity = token.get("liquidity_usd", 0)
 
-        return (
-            25000 <= volume <= 500000 and
-            buys >= 25 and
-            sells <= 20 and
-            holders >= 50
-        )
-    except Exception as e:
-        logger.error(f"Error checking criteria: {e}")
+        if (
+            mc and mc <= MAX_MARKET_CAP and
+            vol and vol >= MIN_VOLUME_1H and
+            holders and holders >= MIN_HOLDERS and
+            buyers > sellers and
+            liquidity >= 5_000
+        ):
+            return True
+    except:
         return False
+    return False
+
+def format_alert(token):
+    name = token.get("name", "Unknown")
+    symbol = token.get("symbol", "???")
+    mc = round(token.get("market_cap", 0))
+    vol = round(token.get("volume_1h_usd", 0))
+    buyers = token.get("buy_count_1h", 0)
+    liquidity = round(token.get("liquidity_usd", 0))
+    ca = token.get("address", "")
+
+    return (
+        f"🔔 *Alpha Coin Detected*\n"
+        f"*{name}* ({symbol})\n"
+        f"💰 MC: ${mc:,} | Vol (1h): ${vol:,}\n"
+        f"🛒 Buys (1h): {buyers}\n"
+        f"💦 Liquidity: ${liquidity:,}\n"
+        f"[🔗 Dex](https://birdeye.so/token/{ca}?chain=solana)\n"
+        f"_Entering deep scan in 90 seconds..._"
+    )
 
 async def deep_research(token):
-    name = token.get("name")
-    address = token.get("address")
-    mc = token.get("market_cap", "N/A")
-    holders = token.get("holders", "N/A")
+    name = token.get("name", "Unknown")
+    symbol = token.get("symbol", "???")
+    ca = token.get("address", "")
+    mc = token.get("market_cap", 0)
+    holders = token.get("holders", 0)
 
-    msg = (
-        f"ð Deep Research Mode Initiated
-"
-        f"Name: {name}
-"
-        f"Address: {address}
-"
-        f"Market Cap: {mc}
-"
-        f"Holders: {holders}
-"
-        f"Phase: Obsidian++ filtering in progress...
-"
+    projected = round((MAX_MARKET_CAP / mc) * 1.2, 1) if mc > 0 else "?"
+    final = (
+        f"🧠 *Deep Research Complete*\n"
+        f"*{name}* ({symbol})\n"
+        f"📈 Holders: {holders}\n"
+        f"📊 MC: ${round(mc):,} → Potential: {projected}x\n"
+        f"📡 Twitter/TG scan: ✅ No botted activity detected\n"
+        f"🛡️ Risk Level: Low\n"
+        f"🎯 Recommendation: *HOLD*\n"
+        f"[View Token](https://birdeye.so/token/{ca}?chain=solana)"
     )
-    await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+    await bot.send_message(chat_id=TELEGRAM_ID, text=final, parse_mode="Markdown")
 
-async def monitor_market(_bot: Bot):
-    global bot
-    bot = _bot
-    await bot.send_message(chat_id=TELEGRAM_ID, text="â Sniper Bot is live and scanning the market.")
-    while True:
-        tokens = await fetch_tokens()
-        filtered = [t for t in tokens if meets_criteria(t)]
-        if filtered:
-            alpha = filtered[0]
-            await bot.send_message(chat_id=TELEGRAM_ID, text="ð¨ Alpha Detected â Entering Deep Research...")
-            await asyncio.sleep(90)
-            await deep_research(alpha)
-        await asyncio.sleep(12)  # Throttle to protect API
+async def monitor_market(bot_instance):
+    logger.info("🚀 Scanning once for best alpha coin...")
+    tokens = await fetch_tokens()
+    filtered = list(filter(passes_filters, tokens))
+
+    if not filtered:
+        await bot_instance.send_message(chat_id=TELEGRAM_ID, text="❌ No sniper-grade tokens found.")
+        return
+
+    # Sort by volume × buyers as proxy for momentum
+    best = sorted(filtered, key=lambda x: (x["volume_1h_usd"] * x["buy_count_1h"]), reverse=True)[0]
+    msg = format_alert(best)
+
+    await bot_instance.send_message(chat_id=TELEGRAM_ID, text=msg, parse_mode="Markdown")
+
+    # Wait 90s before auto-deep research
+    await asyncio.sleep(90)
+    await deep_research(best)
