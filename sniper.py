@@ -78,6 +78,7 @@ async def start_sniping():
                 data = resp.json()
 
                 if not data or "pairs" not in data:
+                    logger.info(f"🔎 Scanning {len(data['pairs'])} pairs at {datetime.now().isoformat()}")
                     logger.warning("❌ DEX Screener: No pairs returned.")
                     await asyncio.sleep(CHECK_INTERVAL)
                     continue
