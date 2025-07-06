@@ -5,7 +5,6 @@ from flask import Flask, request
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes
 from modules.telegram_engine import setup_telegram_commands
-from modules.coinhall_ws import listen_for_pairs
 from modules.solana_tracker_api import fetch_token_data
 from modules.alpha_scoring import score_token
 from modules.contract_check import run_contract_safety_check
