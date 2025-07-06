@@ -1,86 +1,81 @@
 import asyncio
-import httpx
-import logging
 import os
-import time
-
+import logging
+import httpx
 from telegram import Bot
 
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
 BIRDEYE_API = os.getenv("BIRDEYE_API")
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
+bot = None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sniper")
 
-sent_coin = False
-
-async def monitor_market(bot: Bot):
-    global sent_coin
-
+async def fetch_tokens():
+    headers = {"X-API-KEY": BIRDEYE_API}
     url = "https://public-api.birdeye.so/defi/tokenlist?chain=solana"
-    headers = {
-        "X-API-KEY": BIRDEYE_API
-    }
-
-    async with httpx.AsyncClient() as client:
-        try:
-            logger.info("⏳ Scanning market...")
-            response = await client.get(url, headers=headers)
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers, timeout=10)
             response.raise_for_status()
-            data = response.json()
+            return response.json().get("data", [])
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"Fetch error: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return []
 
-            for token in data.get("data", []):
-                if sent_coin:
-                    break
+def meets_criteria(token):
+    try:
+        txns = token.get("txns", {}).get("h1", {})
+        volume = float(token.get("volume_h1_usd", 0))
+        buys = int(txns.get("buys", 0))
+        sells = int(txns.get("sells", 0))
+        holders = int(token.get("holders", 0))
 
-                if not isinstance(token, dict):
-                    continue
+        return (
+            25000 <= volume <= 500000 and
+            buys >= 25 and
+            sells <= 20 and
+            holders >= 50
+        )
+    except Exception as e:
+        logger.error(f"Error checking criteria: {e}")
+        return False
 
-                address = token.get("address")
-                name = token.get("name", "")
-                symbol = token.get("symbol", "")
-                mc = token.get("market_cap", 0)
-                vol = token.get("volume_24h", 0)
-                buyers = token.get("buyers", 0)
+async def deep_research(token):
+    name = token.get("name")
+    address = token.get("address")
+    mc = token.get("market_cap", "N/A")
+    holders = token.get("holders", "N/A")
 
-                # Obsidian filters
-                if (
-                    mc and mc > 0 and mc <= 300_000
-                    and vol and vol >= 5_000
-                    and buyers and buyers >= 15
-                    and "test" not in name.lower()
-                    and all(x not in name.lower() for x in ["scam", "devil", "rekt", "fake"])
-                ):
-                    sent_coin = True
+    msg = (
+        f"ð Deep Research Mode Initiated
+"
+        f"Name: {name}
+"
+        f"Address: {address}
+"
+        f"Market Cap: {mc}
+"
+        f"Holders: {holders}
+"
+        f"Phase: Obsidian++ filtering in progress...
+"
+    )
+    await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
 
-                    msg = (
-                        f"🚀 *Alpha Detected: {name}* ({symbol})\n"
-                        f"💰 Market Cap: ${int(mc):,}\n"
-                        f"📊 Volume 24h: ${int(vol):,}\n"
-                        f"👥 Buyers: {buyers}\n"
-                        f"🔗 Token Address: `{address}`\n\n"
-                        f"🔍 Entering Deep Research in 90s..."
-                    )
-
-                    await bot.send_message(chat_id=TELEGRAM_ID, text=msg, parse_mode="Markdown")
-
-                    await asyncio.sleep(90)
-
-                    # Deep Research Mode
-                    research_msg = (
-                        f"🔎 *Deep Research Mode Initiated*\n\n"
-                        f"🧠 Analyzing:\n"
-                        f"- Contract safety\n"
-                        f"- Holder distribution\n"
-                        f"- Twitter/X and Telegram hype (bot detection)\n"
-                        f"- Whale activity & smart wallet tracking\n"
-                        f"- Real vs botted engagement\n"
-                        f"- Risk Rating + Projected Multiplier\n\n"
-                        f"🎯 *Target Return: 2.5x–35x+*\n"
-                        f"🚨 Live monitoring engaged..."
-                    )
-                    await bot.send_message(chat_id=TELEGRAM_ID, text=research_msg, parse_mode="Markdown")
-
-        except Exception as e:
-            logger.warning(f"Fetch error: {e}")
+async def monitor_market(_bot: Bot):
+    global bot
+    bot = _bot
+    await bot.send_message(chat_id=TELEGRAM_ID, text="â Sniper Bot is live and scanning the market.")
+    while True:
+        tokens = await fetch_tokens()
+        filtered = [t for t in tokens if meets_criteria(t)]
+        if filtered:
+            alpha = filtered[0]
+            await bot.send_message(chat_id=TELEGRAM_ID, text="ð¨ Alpha Detected â Entering Deep Research...")
+            await asyncio.sleep(90)
+            await deep_research(alpha)
+        await asyncio.sleep(12)  # Throttle to protect API
