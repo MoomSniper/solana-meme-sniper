@@ -1,75 +1,137 @@
 import asyncio
+import aiohttp
+import requests
 import logging
-import httpx
-import json
 from datetime import datetime
-from pytz import timezone
-from modules.alpha_filters import is_high_potential_token
-from modules.logger import log_alpha_found
-from modules.solana_tracker import fetch_token_data
-from modules.telegram_engine import send_telegram_alert
-from websockets import connect
+import pytz
+import json
+import time
+from bs4 import BeautifulSoup
 
-# Timezone setup
-eastern = timezone('US/Eastern')
+TELEGRAM_ID = "6881063420"
+BOT_TOKEN = "7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo"
+TELEGRAM_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+HELIUS_API_KEY = "e61da153-6986-43c3-b19f-38099c1e335a"
 
-# Config
-BIRDEYE_WS = "wss://public-api.birdeye.so/ws"
-WATCHED_TOKENS = set()
+DEXSCREENER_URL = "https://api.dexscreener.com/latest/dex/pairs/solana"
+TIMEZONE = pytz.timezone("America/Toronto")
 
-async def handle_birdeye_stream():
-    async with connect(BIRDEYE_WS) as ws:
-        subscribe_payload = json.dumps({
-            "type": "subscribe_new_pairs",
-            "network": "solana"
-        })
-        await ws.send(subscribe_payload)
-        logging.info("✅ [WebSocket] Subscribed to new Solana pairs")
+MIN_VOLUME = 5000
+MAX_MARKETCAP = 300000
+MIN_BUYERS = 15
 
-        while True:
-            try:
-                raw_msg = await ws.recv()
-                data = json.loads(raw_msg)
+async def fetch_data():
+    async with aiohttp.ClientSession() as session:
+        async with session.get(DEXSCREENER_URL) as resp:
+            return await resp.json()
 
-                if data.get("type") == "pair_created":
-                    token_info = data.get("pair", {})
-                    token_address = token_info.get("address")
-                    token_name = token_info.get("name")
-                    token_symbol = token_info.get("symbol")
+def log(msg):
+    print(f"[{datetime.now(TIMEZONE).strftime('%H:%M:%S')}] {msg}")
 
-                    if token_address in WATCHED_TOKENS:
-                        continue
-                    WATCHED_TOKENS.add(token_address)
+def send_telegram_message(message):
+    try:
+        payload = {
+            "chat_id": TELEGRAM_ID,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
+        requests.post(TELEGRAM_URL, json=payload)
+    except Exception as e:
+        log(f"Telegram Error: {e}")
 
-                    logging.info(f"🆕 New Token Detected: {token_name} ({token_symbol})")
+def score_coin(coin):
+    try:
+        mc = coin["fdv"] or coin["marketCap"]
+        vol = coin["volume"]["h1"]
+        buyers = coin["txns"]["h1"]["buys"]
 
-                    # Fetch metadata from Solana Tracker
-                    token_data = await fetch_token_data(token_address)
-                    if not token_data:
-                        logging.warning(f"⚠️ No token data found for {token_address}")
-                        continue
+        score = 0
+        if mc and mc < MAX_MARKETCAP:
+            score += 30
+        if vol and vol > MIN_VOLUME:
+            score += 30
+        if buyers and buyers > MIN_BUYERS:
+            score += 20
+        if coin.get("liquidity", {}).get("usd", 0) >= 3000:
+            score += 10
+        if "honeypot" in coin.get("info", {}).get("description", "").lower():
+            score -= 50
 
-                    # Run sniper-grade filters
-                    is_alpha, alpha_score = is_high_potential_token(token_data)
-                    if is_alpha:
-                        logging.info(f"💥 ALPHA FOUND: {token_name} ({token_symbol}) | Score: {alpha_score}")
-                        log_alpha_found(token_data, alpha_score)
-                        await send_telegram_alert(token_data, alpha_score)
+        return score
+    except:
+        return 0
 
-                await asyncio.sleep(0.01)  # keep loop tight but not overwhelming
-            except Exception as e:
-                logging.error(f"❌ [WebSocket Error] {e}")
-                await asyncio.sleep(3)
+def generate_alpha_report(coin, score):
+    name = coin.get("baseToken", {}).get("name", "Unknown")
+    symbol = coin.get("baseToken", {}).get("symbol", "")
+    mc = coin.get("fdv") or coin.get("marketCap", 0)
+    vol = coin.get("volume", {}).get("h1", 0)
+    buys = coin.get("txns", {}).get("h1", {}).get("buys", 0)
+    dexs = coin.get("url", "")
+    liq = coin.get("liquidity", {}).get("usd", 0)
 
-async def scan_and_score_market():
-    # Not used now — replaced by websocket scanner for live coins
-    logging.info("⚠️ Obsidian Mode only uses WebSocket scanner now.")
-    return
+    return f"""🚀 <b>ALPHA FOUND [{symbol}]</b>
+🧠 Score: <b>{score}/100</b>
+🪙 Market Cap: ${mc:,.0f}
+📊 Volume (1h): ${vol:,.0f}
+🛒 Buys (1h): {buys}
+💧 Liquidity: ${liq:,.0f}
+🔗 <a href="{dexs}">View on Dexscreener</a>
+"""
 
-def start_sniper():
-    now = datetime.now(eastern)
-    if 7 <= now.hour < 24:
-        logging.info("🚀 Sniper is live — Obsidian Mode active")
-        asyncio.run(handle_birdeye_stream())
-    else:
-        logging.info("💤 Sleeping hours (12am–7am) — sniper paused")
+async def check_smart_wallets(mint):
+    url = f"https://api.helius.xyz/v0/tokens/{mint}/holders?api-key={HELIUS_API_KEY}"
+    try:
+        res = requests.get(url).json()
+        count = len(res)
+        return count > 10  # Placeholder condition
+    except Exception as e:
+        log(f"Helius error: {e}")
+        return False
+
+async def deep_research(coin):
+    try:
+        url = coin.get("url")
+        mint = coin.get("baseToken", {}).get("address")
+        soup = BeautifulSoup(requests.get(url).text, "html.parser")
+        social_signals = soup.get_text().lower()
+
+        score_boost = 0
+        if "telegram" in social_signals or "twitter" in social_signals:
+            score_boost += 10
+        if await check_smart_wallets(mint):
+            score_boost += 10
+
+        return score_boost
+    except Exception as e:
+        log(f"Deep research failed: {e}")
+        return 0
+
+async def main_loop():
+    alerted = set()
+    while True:
+        try:
+            data = await fetch_data()
+            for coin in data.get("pairs", []):
+                address = coin.get("pairAddress")
+                if not address or address in alerted:
+                    continue
+
+                score = score_coin(coin)
+                if score >= 85:
+                    boost = await deep_research(coin)
+                    total_score = score + boost
+
+                    if total_score >= 90:
+                        msg = generate_alpha_report(coin, total_score)
+                        send_telegram_message(msg)
+                        alerted.add(address)
+
+        except Exception as e:
+            log(f"Main loop error: {e}")
+
+        await asyncio.sleep(3)
+
+if __name__ == "__main__":
+    asyncio.run(main_loop())
