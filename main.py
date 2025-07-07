@@ -65,7 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 application = (
     ApplicationBuilder()
     .token(BOT_TOKEN)
-    .post_init(lambda app: app.create_task(scan_market_loop()))
+    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
     .build()
 )
 
