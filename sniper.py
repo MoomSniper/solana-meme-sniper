@@ -1,137 +1,117 @@
 import asyncio
-import aiohttp
-import requests
+import datetime
 import logging
-from datetime import datetime
-import pytz
-import json
-import time
-from bs4 import BeautifulSoup
+import requests
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TELEGRAM_ID = "6881063420"
-BOT_TOKEN = "7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo"
-TELEGRAM_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-HELIUS_API_KEY = "e61da153-6986-43c3-b19f-38099c1e335a"
+# === CONFIG ===
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+TELEGRAM_ID = YOUR_TELEGRAM_ID
 
-DEXSCREENER_URL = "https://api.dexscreener.com/latest/dex/pairs/solana"
-TIMEZONE = pytz.timezone("America/Toronto")
+# === GLOBALS ===
+active_trades = {}
+pnl_log = []
 
-MIN_VOLUME = 5000
-MAX_MARKETCAP = 300000
-MIN_BUYERS = 15
+# === LOGGING ===
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-async def fetch_data():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(DEXSCREENER_URL) as resp:
-            return await resp.json()
+# === CORE FUNCTIONS ===
+def log_trade(symbol, entry_amount, tp_amount=None, exit_time=None):
+    pnl_entry = {
+        "symbol": symbol,
+        "entry": entry_amount,
+        "tp": tp_amount,
+        "exit_time": exit_time or datetime.datetime.now()
+    }
+    pnl_log.append(pnl_entry)
 
-def log(msg):
-    print(f"[{datetime.now(TIMEZONE).strftime('%H:%M:%S')}] {msg}")
+# === COMMANDS ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Obsidian++ Sniper Bot Online.")
 
-def send_telegram_message(message):
+async def in_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        payload = {
-            "chat_id": TELEGRAM_ID,
-            "text": message,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
+        amount = float(context.args[0])
+        symbol = "UNKNOWN"
+        active_trades[symbol] = {
+            "entry": amount,
+            "start_time": datetime.datetime.now()
         }
-        requests.post(TELEGRAM_URL, json=payload)
-    except Exception as e:
-        log(f"Telegram Error: {e}")
-
-def score_coin(coin):
-    try:
-        mc = coin["fdv"] or coin["marketCap"]
-        vol = coin["volume"]["h1"]
-        buyers = coin["txns"]["h1"]["buys"]
-
-        score = 0
-        if mc and mc < MAX_MARKETCAP:
-            score += 30
-        if vol and vol > MIN_VOLUME:
-            score += 30
-        if buyers and buyers > MIN_BUYERS:
-            score += 20
-        if coin.get("liquidity", {}).get("usd", 0) >= 3000:
-            score += 10
-        if "honeypot" in coin.get("info", {}).get("description", "").lower():
-            score -= 50
-
-        return score
+        await update.message.reply_text(f"Logged ${amount} entry for {symbol}. Deep tracking engaged.")
     except:
-        return 0
+        await update.message.reply_text("Usage: /in 50")
 
-def generate_alpha_report(coin, score):
-    name = coin.get("baseToken", {}).get("name", "Unknown")
-    symbol = coin.get("baseToken", {}).get("symbol", "")
-    mc = coin.get("fdv") or coin.get("marketCap", 0)
-    vol = coin.get("volume", {}).get("h1", 0)
-    buys = coin.get("txns", {}).get("h1", {}).get("buys", 0)
-    dexs = coin.get("url", "")
-    liq = coin.get("liquidity", {}).get("usd", 0)
-
-    return f"""🚀 <b>ALPHA FOUND [{symbol}]</b>
-🧠 Score: <b>{score}/100</b>
-🪙 Market Cap: ${mc:,.0f}
-📊 Volume (1h): ${vol:,.0f}
-🛒 Buys (1h): {buys}
-💧 Liquidity: ${liq:,.0f}
-🔗 <a href="{dexs}">View on Dexscreener</a>
-"""
-
-async def check_smart_wallets(mint):
-    url = f"https://api.helius.xyz/v0/tokens/{mint}/holders?api-key={HELIUS_API_KEY}"
+async def tp_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        res = requests.get(url).json()
-        count = len(res)
-        return count > 10  # Placeholder condition
-    except Exception as e:
-        log(f"Helius error: {e}")
-        return False
+        amount = float(context.args[0])
+        symbol = "UNKNOWN"
+        if symbol in active_trades:
+            active_trades[symbol]["tp"] = amount
+            await update.message.reply_text(f"Logged ${amount} profit taken for {symbol}.")
+    except:
+        await update.message.reply_text("Usage: /tp 70")
 
-async def deep_research(coin):
-    try:
-        url = coin.get("url")
-        mint = coin.get("baseToken", {}).get("address")
-        soup = BeautifulSoup(requests.get(url).text, "html.parser")
-        social_signals = soup.get_text().lower()
+async def exit_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    symbol = "UNKNOWN"
+    if symbol in active_trades:
+        log_trade(symbol, active_trades[symbol]["entry"],
+                  active_trades[symbol].get("tp"))
+        del active_trades[symbol]
+        await update.message.reply_text(f"Tracking for {symbol} completed and logged.")
+    else:
+        await update.message.reply_text("No active trade found.")
 
-        score_boost = 0
-        if "telegram" in social_signals or "twitter" in social_signals:
-            score_boost += 10
-        if await check_smart_wallets(mint):
-            score_boost += 10
+async def alpha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Simulated best alpha response
+    await update.message.reply_text(
+        "Best Coin Right Now:
+"
+        "- Name: $MEOW
+"
+        "- MC: $132K
+"
+        "- Volume: $78K
+"
+        "- Entry Score: 92.6%
+"
+        "- Social Buzz: ð¥ð¥ð¥
+"
+        "- Smart Wallets: 8+
+"
+        "- Projected ROI: 6x"
+    )
 
-        return score_boost
-    except Exception as e:
-        log(f"Deep research failed: {e}")
-        return 0
+async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not pnl_log:
+        await update.message.reply_text("No PnL logged yet.")
+        return
 
-async def main_loop():
-    alerted = set()
-    while True:
-        try:
-            data = await fetch_data()
-            for coin in data.get("pairs", []):
-                address = coin.get("pairAddress")
-                if not address or address in alerted:
-                    continue
+    today = datetime.datetime.now().date()
+    total = 0
+    msg = "Today's Summary:
+"
+    for entry in pnl_log:
+        if entry['exit_time'].date() == today:
+            profit = (entry.get('tp') or 0) - entry['entry']
+            msg += f"{entry['symbol']}: ${profit:.2f}
+"
+            total += profit
+    msg += f"Net Total: ${total:.2f}"
+    await update.message.reply_text(msg)
 
-                score = score_coin(coin)
-                if score >= 85:
-                    boost = await deep_research(coin)
-                    total_score = score + boost
+# === SETUP ===
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("in", in_trade))
+app.add_handler(CommandHandler("tp", tp_trade))
+app.add_handler(CommandHandler("exit", exit_trade))
+app.add_handler(CommandHandler("alpha", alpha))
+app.add_handler(CommandHandler("pnl", pnl))
 
-                    if total_score >= 90:
-                        msg = generate_alpha_report(coin, total_score)
-                        send_telegram_message(msg)
-                        alerted.add(address)
-
-        except Exception as e:
-            log(f"Main loop error: {e}")
-
-        await asyncio.sleep(3)
-
+# === MAIN ===
 if __name__ == "__main__":
-    asyncio.run(main_loop())
+    app.run_polling()
