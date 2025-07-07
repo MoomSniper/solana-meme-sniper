@@ -1,6 +1,6 @@
 import os
 import logging
-import httpx
+import cloudscraper
 import asyncio
 from bs4 import BeautifulSoup
 from flask import Flask, request
@@ -44,8 +44,8 @@ async def scan_dexscreener():
     while True:
         try:
             logger.info("⚡️ Scanning Dexscreener HTML...")
-            async with httpx.AsyncClient() as client:
-                res = await client.get(url, headers=headers)
+            scraper = cloudscraper.create_scraper()
+res = scraper.get(url, headers=headers)
                 soup = BeautifulSoup(res.text, "html.parser")
 
             rows = soup.find_all("a", href=re.compile("^/solana/"))
