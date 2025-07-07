@@ -1,93 +1,111 @@
 import os
-import json
-import asyncio
 import logging
+import asyncio
 import httpx
 from flask import Flask, request
-from telegram import Bot
+from telegram import Update
+from telegram.ext import ApplicationBuilder
+from bs4 import BeautifulSoup
 
-# Environment Variables
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-TELEGRAM_ID = os.environ["TELEGRAM_ID"]
-HELIUS_RPC = "https://mainnet.helius-rpc.com/"
-PORT = int(os.environ.get("PORT", 10000))
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+# ENV VARS
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+HELIUS_API = os.getenv("HELIUS_API")
+PORT = int(os.getenv("PORT", 10000))
 
-# Logger Setup
+# INIT
+app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-bot = Bot(token=BOT_TOKEN)
-
-# Send Telegram Message
-async def send_telegram_message(message):
+# SEND MESSAGE
+async def send_telegram(text: str):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_ID, "text": text}
     try:
-        await bot.send_message(chat_id=TELEGRAM_ID, text=message, parse_mode="HTML")
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload)
     except Exception as e:
-        logger.error(f"Telegram send error: {e}")
+        logger.error(f"Telegram error: {e}")
 
-# Pull and filter token data
-async def scan_market():
-    headers = {"Content-Type": "application/json"}
-    body = {
+# HELIUS CHECK
+async def check_helius(address):
+    url = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API}"
+    payload = {
         "jsonrpc": "2.0",
         "id": 1,
-        "method": "getTokens",
-        "params": {
-            "limit": 50,
-            "sortBy": "recent",
-            "direction": "desc"
-        }
+        "method": "getTokenAccountsByOwner",
+        "params": [address, {"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}, {"encoding": "json"}]
     }
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(url, json=payload)
+            return res.status_code == 200
+    except:
+        return False
 
-    async with httpx.AsyncClient() as client:
+# SCANNER LOOP
+async def sniper_loop():
+    url = "https://dexscreener.com/solana"
+    while True:
         try:
-            res = await client.post(HELIUS_RPC, headers=headers, json=body, timeout=10)
-            data = res.json()
-            logger.info(f"📦 Raw Helius data: {json.dumps(data, indent=2)}")
+            logger.info("⚡️ Scanning Dexscreener HTML...")
+            async with httpx.AsyncClient() as client:
+                res = await client.get(url)
+            soup = BeautifulSoup(res.text, "html.parser")
+            rows = soup.select("a[href^='/solana/']")[:10]  # top 10 new pairs
 
-            if not data.get("result"):
-                logger.warning("No result in Helius response.")
-                return
+            for row in rows:
+                link = row.get("href", "")
+                address = link.split("/")[-1]
+                full_link = f"https://dexscreener.com{link}"
+                name_tag = row.select_one("div > div > div > div > div")
+                name = name_tag.text.strip() if name_tag else "Unknown"
 
-            for token in data["result"]:
-                name = token.get("name", "Unknown")
-                mc = token.get("marketCap", 0)
-                vol = token.get("volume24h", 0)
-                buyers = token.get("uniqueBuyers", 0)
+                valid = await check_helius(address)
+                if not valid:
+                    continue
 
-                logger.info(f"📊 Token: {name} | MC: {mc} | Vol: {vol} | Buyers: {buyers}")
+                msg = (
+                    f"🚨 ALPHA FOUND\n\n"
+                    f"🪙 {name}\n"
+                    f"🔍 Helius check: ✅\n"
+                    f"🔗 {full_link}"
+                )
+                await send_telegram(msg)
+                logger.info(msg)
 
-                if mc and vol and buyers and mc < 300_000 and vol > 5_000 and buyers > 15:
-                    message = (
-                        f"🚨 <b>ALPHA FOUND</b>\n"
-                        f"🪙 <b>{name}</b>\n"
-                        f"💰 MC: ${mc:,.0f}\n"
-                        f"📈 Vol: ${vol:,.0f}\n"
-                        f"👥 Buyers: {buyers}"
-                    )
-                    await send_telegram_message(message)
+            await asyncio.sleep(30)
+
         except Exception as e:
-            logger.error(f"Helius scan error: {e}")
+            logger.error(f"Scanner error: {e}")
+            await asyncio.sleep(30)
 
+# WEBHOOK ENTRYPOINT
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
+    data = request.get_json(force=True)
+    application.update_queue.put_nowait(Update.de_json(data, application.bot))
     return "OK"
 
-@app.route("/")
-def root():
-    return "✅ Obsidian Sniper Bot is live."
+@app.route("/", methods=["GET"])
+def index():
+    return "Sniper bot active."
 
-async def main():
-    logger.info("✅ Telegram webhook set.")
-    logger.info("🧠 Obsidian Mode active. Scanner running.")
-    await send_telegram_message("🟢 Obsidian Bot Deployed. Scanning in real-time.")
-
-    while True:
-        await scan_market()
-        await asyncio.sleep(4)
+# INIT APP + LAUNCH
+application = (
+    ApplicationBuilder()
+    .token(BOT_TOKEN)
+    .post_init(lambda _: asyncio.get_event_loop().create_task(sniper_loop()))
+    .build()
+)
 
 if __name__ == "__main__":
-    asyncio.run(main())  # ✅ Python 3.11+ safe
-    app.run(host="0.0.0.0", port=PORT)
+    logger.info("✅ Telegram webhook set.")
+    logger.info("🧠 Obsidian Mode active. Scanner running.")
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=WEBHOOK_URL,
+    )
