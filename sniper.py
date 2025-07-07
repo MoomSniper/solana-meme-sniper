@@ -112,6 +112,3 @@ app.add_handler(CommandHandler("exit", exit_trade))
 app.add_handler(CommandHandler("alpha", alpha))
 app.add_handler(CommandHandler("pnl", pnl))
 
-# === MAIN ===
-if __name__ == "__main__":
-    app.run_polling()
