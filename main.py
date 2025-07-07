@@ -1,26 +1,22 @@
 import os
 import logging
-import cloudscraper
 import asyncio
-from bs4 import BeautifulSoup
+import httpx
+import cloudscraper
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder
-import re
+from telegram.ext import ApplicationBuilder, ContextTypes
 
-# Init logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ENV
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# Flask app
 app = Flask(__name__)
 
-# Send Telegram message
+# Send Telegram Message
 async def send_telegram_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_ID, "text": text}
@@ -28,107 +24,59 @@ async def send_telegram_message(text: str):
         async with httpx.AsyncClient() as client:
             await client.post(url, json=payload)
     except Exception as e:
-        logger.error(f"❌ Telegram send failed: {e}")
+        logger.error(f"❌ Failed to send Telegram message: {e}")
 
-# Main Obsidian Scanner Loop
-async def scan_dexscreener():
+# Market Scanner using Dexscreener HTML + cloudscraper
+async def scan_market_loop():
+    scraper = cloudscraper.create_scraper()
     url = "https://dexscreener.com/solana"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/114.0.0.0 Safari/537.36"
-        )
-    }
 
     while True:
         try:
             logger.info("⚡️ Scanning Dexscreener HTML...")
-            scraper = cloudscraper.create_scraper()
-res = scraper.get(url, headers=headers)
-                soup = BeautifulSoup(res.text, "html.parser")
+            res = scraper.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if res.status_code != 200:
+                logger.warning(f"⚠️ Dexscreener returned status {res.status_code}")
+                await asyncio.sleep(30)
+                continue
 
-            rows = soup.find_all("a", href=re.compile("^/solana/"))
-            for row in rows:
-                name_tag = row.find("h3")
-                if not name_tag:
-                    continue
+            html = res.text
+            # You can extract token data here using BeautifulSoup if needed
+            logger.info("✅ Dexscreener HTML loaded successfully.")
 
-                name = name_tag.text.strip()
-                info = row.find_all("span")
-                mc, vol, txns = 0, 0, 0
-
-                for span in info:
-                    text = span.text.lower()
-                    if "mc" in text:
-                        mc = parse_number(text)
-                    elif "volume" in text:
-                        vol = parse_number(text)
-                    elif "txns" in text:
-                        txns = parse_number(text)
-
-                if mc < 300_000 and vol > 5_000 and txns > 15:
-                    address = row["href"].split("/")[-1]
-                    msg = (
-                        f"🚨 ALPHA FOUND\n\n"
-                        f"🪙 {name}\n"
-                        f"💰 MC: ${mc:,.0f}\n"
-                        f"📈 Vol (1h): ${vol:,.0f}\n"
-                        f"🛒 Txns: {txns}\n"
-                        f"🔗 https://dexscreener.com/solana/{address}"
-                    )
-                    logger.info(msg)
-                    await send_telegram_message(msg)
-
-            await asyncio.sleep(44)
+            await asyncio.sleep(45)
 
         except Exception as e:
-            logger.error(f"❌ Scanner error: {e}")
-            await asyncio.sleep(44)
+            logger.error(f"❌ Dexscreener scrape failed: {e}")
+            await asyncio.sleep(45)
 
-# Parse shorthand numbers like $8.3K
-def parse_number(text):
-    try:
-        num = re.findall(r"\$?([\d,.]+)([kKmMbB]?)", text)
-        if not num:
-            return 0
-        base, suffix = num[0]
-        base = float(base.replace(",", ""))
-        if suffix.lower() == "k":
-            return int(base * 1_000)
-        if suffix.lower() == "m":
-            return int(base * 1_000_000)
-        return int(base)
-    except:
-        return 0
+# Telegram Bot Init
+application = (
+    ApplicationBuilder()
+    .token(BOT_TOKEN)
+    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
+    .build()
+)
 
-# /start is not used – removed for Obsidian++
-# Flask Index
+# Flask Routes
 @app.route("/", methods=["GET"])
 def index():
-    return "Obsidian Sniper is live."
+    return "Sniper bot is live."
 
-# Flask Webhook
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
     logger.info(f"📥 Incoming Telegram update: {data}")
+    application.update_queue.put_nowait(Update.de_json(data, application.bot))
     return "OK"
-
-# Init Telegram app and scanner
-application = (
-    ApplicationBuilder()
-    .token(BOT_TOKEN)
-    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_dexscreener()))
-    .build()
-)
 
 # Start App
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 10000))
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
     application.run_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 10000)),
+        port=port,
         webhook_url=WEBHOOK_URL,
     )
