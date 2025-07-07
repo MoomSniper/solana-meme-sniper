@@ -1,111 +1,96 @@
 import os
+import json
+import asyncio
 import logging
 import httpx
-import asyncio
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes
+from telegram import Bot
 
+# Environment Variables
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+TELEGRAM_ID = os.environ["TELEGRAM_ID"]
+HELIUS_RPC = "https://mainnet.helius-rpc.com/"
+PORT = int(os.environ.get("PORT", 10000))
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+
+# Logger Setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
-HELIUS_API = os.getenv("HELIUS_API")
-
 app = Flask(__name__)
+bot = Bot(token=BOT_TOKEN)
 
-# Telegram Messenger
-async def send_telegram_message(text: str):
+# Send Telegram Message
+async def send_telegram_message(message):
     try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={"chat_id": TELEGRAM_ID, "text": text},
-            )
+        await bot.send_message(chat_id=TELEGRAM_ID, text=message, parse_mode="HTML")
     except Exception as e:
-        logger.error(f"❌ Telegram send failed: {e}")
+        logger.error(f"Telegram send error: {e}")
 
-# Alpha Scanner via Helius
-async def scan_market_loop():
-    headers = {
-        "Authorization": f"Bearer {HELIUS_API}",
-        "Content-Type": "application/json",
-    }
-
-    url = "https://mainnet.helius-rpc.com/"  # your actual endpoint may differ
-    payload = {
+# Pull and filter token data
+async def scan_market():
+    headers = {"Content-Type": "application/json"}
+    body = {
         "jsonrpc": "2.0",
         "id": 1,
-        "method": "getAssetsByGroup",
+        "method": "getTokens",
         "params": {
-            "groupKey": "collection",
-            "groupValue": "TOKEN_PROGRAM_PUBKEY",
-            "page": 1,
-            "limit": 50
+            "limit": 50,
+            "sortBy": "recent",
+            "direction": "desc"
         }
     }
 
-    while True:
+    async with httpx.AsyncClient() as client:
         try:
-            logger.info("⚡️ Scanning market via Helius...")
-            async with httpx.AsyncClient() as client:
-                res = await client.post(url, json=payload, headers=headers)
-                data = res.json()
+            res = await client.post(HELIUS_RPC, headers=headers, json=body, timeout=10)
+            data = res.json()
+            logger.info(f"📦 Raw Helius data: {json.dumps(data, indent=2)}")
 
-            tokens = data.get("result", {}).get("items", [])[:30]
-            for token in tokens:
-                name = token.get("content", {}).get("metadata", {}).get("name", "Unknown")
-                address = token.get("id", "N/A")
-                mc = token.get("metrics", {}).get("market_cap_usd", 0)
-                vol = token.get("metrics", {}).get("volume_usd_24h", 0)
-                txns = token.get("metrics", {}).get("tx_count_24h", 0)
+            if not data.get("result"):
+                logger.warning("No result in Helius response.")
+                return
 
-                if mc and vol and txns and mc < 300_000 and vol > 5000 and txns > 15:
-                    msg = (
-                        f"🚨 ALPHA FOUND\n\n"
-                        f"🪙 {name}\n"
+            for token in data["result"]:
+                name = token.get("name", "Unknown")
+                mc = token.get("marketCap", 0)
+                vol = token.get("volume24h", 0)
+                buyers = token.get("uniqueBuyers", 0)
+
+                logger.info(f"📊 Token: {name} | MC: {mc} | Vol: {vol} | Buyers: {buyers}")
+
+                if mc and vol and buyers and mc < 300_000 and vol > 5_000 and buyers > 15:
+                    message = (
+                        f"🚨 <b>ALPHA FOUND</b>\n"
+                        f"🪙 <b>{name}</b>\n"
                         f"💰 MC: ${mc:,.0f}\n"
-                        f"📈 Vol (24h): ${vol:,.0f}\n"
-                        f"🛒 Txns: {txns}\n"
-                        f"🔗 https://solanatracker.io/token/{address}"
+                        f"📈 Vol: ${vol:,.0f}\n"
+                        f"👥 Buyers: {buyers}"
                     )
-                    logger.info(msg)
-                    await send_telegram_message(msg)
-
-            await asyncio.sleep(45)
-
+                    await send_telegram_message(message)
         except Exception as e:
-            logger.error(f"❌ Market scan error: {e}")
-            await asyncio.sleep(45)
-
-# Flask Routes
-@app.route("/", methods=["GET"])
-def index():
-    return "Sniper bot is live."
+            logger.error(f"Helius scan error: {e}")
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-    logger.info(f"📥 Telegram update: {data}")
     return "OK"
 
-# Telegram Bot Setup
-application = (
-    ApplicationBuilder()
-    .token(BOT_TOKEN)
-    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
-    .build()
-)
+@app.route("/")
+def root():
+    return "✅ Obsidian Sniper Bot is live."
 
-# Run App
 if __name__ == "__main__":
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=WEBHOOK_URL,
-    )
+    asyncio.run(send_telegram_message("🟢 Obsidian Bot Deployed. Scanning in real-time."))
+
+    loop = asyncio.get_event_loop()
+
+    async def run_forever():
+        while True:
+            await scan_market()
+            await asyncio.sleep(4)
+
+    loop.create_task(run_forever())
+
+    app.run(host="0.0.0.0", port=PORT)
