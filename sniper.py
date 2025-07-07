@@ -1,114 +1,70 @@
-import asyncio
-import datetime
-import logging
 import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import time
+from datetime import datetime
+from telegram import Bot
+import logging
 
-# === CONFIG ===
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_ID = YOUR_TELEGRAM_ID
+TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TELEGRAM_ID = 'YOUR_TELEGRAM_USER_ID'
+bot = Bot(token=TELEGRAM_TOKEN)
 
-# === GLOBALS ===
-active_trades = {}
-pnl_log = []
+logging.basicConfig(level=logging.INFO)
 
-# === LOGGING ===
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-
-# === CORE FUNCTIONS ===
-def log_trade(symbol, entry_amount, tp_amount=None, exit_time=None):
-    pnl_entry = {
-        "symbol": symbol,
-        "entry": entry_amount,
-        "tp": tp_amount,
-        "exit_time": exit_time or datetime.datetime.now()
-    }
-    pnl_log.append(pnl_entry)
-
-# === COMMANDS ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Obsidian++ Sniper Bot Online.")
-
-async def in_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def get_live_data():
+    url = "https://api.dexscreener.com/latest/dex/pairs/solana"
     try:
-        amount = float(context.args[0])
-        symbol = "UNKNOWN"
-        active_trades[symbol] = {
-            "entry": amount,
-            "start_time": datetime.datetime.now()
-        }
-        await update.message.reply_text(f"Logged ${amount} entry for {symbol}. Deep tracking engaged.")
-    except:
-        await update.message.reply_text("Usage: /in 50")
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()['pairs']
+    except Exception as e:
+        logging.error(f"Error getting live data: {e}")
+    return []
 
-async def tp_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def is_alpha(pair):
     try:
-        amount = float(context.args[0])
-        symbol = "UNKNOWN"
-        if symbol in active_trades:
-            active_trades[symbol]["tp"] = amount
-            await update.message.reply_text(f"Logged ${amount} profit taken for {symbol}.")
-    except:
-        await update.message.reply_text("Usage: /tp 70")
+        mc = float(pair.get('fdv') or 0)
+        volume = float(pair.get('volume', {}).get('h1', 0))
+        buyers = int(pair.get('txns', {}).get('h1', {}).get('buys', 0))
+        sells = int(pair.get('txns', {}).get('h1', {}).get('sells', 0))
+        liq = float(pair.get('liquidity', {}).get('usd', 0))
 
-async def exit_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    symbol = "UNKNOWN"
-    if symbol in active_trades:
-        log_trade(symbol, active_trades[symbol]["entry"],
-                  active_trades[symbol].get("tp"))
-        del active_trades[symbol]
-        await update.message.reply_text(f"Tracking for {symbol} completed and logged.")
-    else:
-        await update.message.reply_text("No active trade found.")
+        if mc < 5000 or mc > 300000:
+            return False
+        if volume < 3000:
+            return False
+        if buyers < 15:
+            return False
+        if sells == 0 or (buyers / sells) < 1.5:
+            return False
+        if liq < 0.05 * mc:
+            return False
+        return True
+    except Exception as e:
+        logging.error(f"Filter error: {e}")
+        return False
 
-async def alpha(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Simulated best alpha response
-    await update.message.reply_text(
-        "Best Coin Right Now:
-"
-        "- Name: $MEOW
-"
-        "- MC: $132K
-"
-        "- Volume: $78K
-"
-        "- Entry Score: 92.6%
-"
-        "- Social Buzz: ð¥ð¥ð¥
-"
-        "- Smart Wallets: 8+
-"
-        "- Projected ROI: 6x"
+def format_message(pair):
+    return (
+        f"🚨 *ALPHA ALERT* 🚨\n"
+        f"🪙 Token: {pair['baseToken']['name']} ({pair['baseToken']['symbol']})\n"
+        f"📊 MC: ${round(float(pair.get('fdv') or 0))}\n"
+        f"💧 Liquidity: ${round(float(pair['liquidity']['usd']))}\n"
+        f"📈 1H Volume: ${round(float(pair['volume']['h1']))}\n"
+        f"🛒 Buyers: {pair['txns']['h1']['buys']} | Sellers: {pair['txns']['h1']['sells']}\n"
+        f"🔗 [Dexscreener]({pair['url']})"
     )
 
-async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not pnl_log:
-        await update.message.reply_text("No PnL logged yet.")
-        return
+def main_loop():
+    seen = set()
+    while True:
+        pairs = get_live_data()
+        for pair in pairs:
+            if pair['pairAddress'] not in seen and is_alpha(pair):
+                seen.add(pair['pairAddress'])
+                message = format_message(pair)
+                bot.send_message(chat_id=TELEGRAM_ID, text=message, parse_mode='Markdown')
+                logging.info(f"ALPHA SENT: {pair['baseToken']['symbol']}")
+        time.sleep(3)
 
-    today = datetime.datetime.now().date()
-    total = 0
-    msg = "Today's Summary:
-"
-    for entry in pnl_log:
-        if entry['exit_time'].date() == today:
-            profit = (entry.get('tp') or 0) - entry['entry']
-            msg += f"{entry['symbol']}: ${profit:.2f}
-"
-            total += profit
-    msg += f"Net Total: ${total:.2f}"
-    await update.message.reply_text(msg)
-
-# === SETUP ===
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("in", in_trade))
-app.add_handler(CommandHandler("tp", tp_trade))
-app.add_handler(CommandHandler("exit", exit_trade))
-app.add_handler(CommandHandler("alpha", alpha))
-app.add_handler(CommandHandler("pnl", pnl))
-
+if __name__ == "__main__":
+    main_loop()
