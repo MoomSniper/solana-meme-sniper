@@ -4,7 +4,7 @@ import httpx
 import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, ContextTypes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,76 +12,74 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-SOLANA_TRACKER_API = os.getenv("SOLANA_TRACKER_API")
+PORT = int(os.getenv("PORT", 10000))
+HELIUS_API = os.getenv("HELIUS_API")
 
 app = Flask(__name__)
 
-# Send Telegram Message
+# Telegram Messenger
 async def send_telegram_message(text: str):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_ID, "text": text}
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(url, json=payload)
+            await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": TELEGRAM_ID, "text": text},
+            )
     except Exception as e:
-        logger.error(f"❌ Failed to send Telegram message: {e}")
+        logger.error(f"❌ Telegram send failed: {e}")
 
-# Real Market Scan with Solana Tracker (V2)
+# Alpha Scanner via Helius
 async def scan_market_loop():
     headers = {
-        "accept": "application/json",
-        "x-api-key": SOLANA_TRACKER_API
+        "Authorization": f"Bearer {HELIUS_API}",
+        "Content-Type": "application/json",
     }
-    url = "https://public-api.solanatracker.io/v1/tokens?chain=solana&limit=50&sort=volume_1h"
+
+    url = "https://mainnet.helius-rpc.com/"  # your actual endpoint may differ
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getAssetsByGroup",
+        "params": {
+            "groupKey": "collection",
+            "groupValue": "TOKEN_PROGRAM_PUBKEY",
+            "page": 1,
+            "limit": 50
+        }
+    }
 
     while True:
         try:
-            logger.info("⚡️ Scanning live market via Solana Tracker...")
+            logger.info("⚡️ Scanning market via Helius...")
             async with httpx.AsyncClient() as client:
-                res = await client.get(url, headers=headers)
+                res = await client.post(url, json=payload, headers=headers)
                 data = res.json()
 
-            tokens = data.get("data", [])[:40]
+            tokens = data.get("result", {}).get("items", [])[:30]
             for token in tokens:
-                mc = token.get("market_cap", 0)
-                vol = token.get("volume_1h", 0)
-                buyers = token.get("transactions_1h", 0)
-                name = token.get("name", "N/A")
-                address = token.get("address", "")
+                name = token.get("content", {}).get("metadata", {}).get("name", "Unknown")
+                address = token.get("id", "N/A")
+                mc = token.get("metrics", {}).get("market_cap_usd", 0)
+                vol = token.get("metrics", {}).get("volume_usd_24h", 0)
+                txns = token.get("metrics", {}).get("tx_count_24h", 0)
 
-                if not all([mc, vol, buyers]):
-                    continue
-
-                if mc < 300_000 and vol > 5_000 and buyers > 15:
+                if mc and vol and txns and mc < 300_000 and vol > 5000 and txns > 15:
                     msg = (
                         f"🚨 ALPHA FOUND\n\n"
                         f"🪙 {name}\n"
                         f"💰 MC: ${mc:,.0f}\n"
-                        f"📈 Vol (1h): ${vol:,.0f}\n"
-                        f"🛒 Txns: {buyers}\n"
+                        f"📈 Vol (24h): ${vol:,.0f}\n"
+                        f"🛒 Txns: {txns}\n"
                         f"🔗 https://solanatracker.io/token/{address}"
                     )
                     logger.info(msg)
                     await send_telegram_message(msg)
 
-            await asyncio.sleep(44)
+            await asyncio.sleep(45)
 
         except Exception as e:
-            logger.error(f"❌ Error in market scan: {e}")
-            await asyncio.sleep(44)
-
-# /start Command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Obsidian Sniper Bot is now live. Watching market 24/7.")
-
-# Telegram App
-application = (
-    ApplicationBuilder()
-    .token(BOT_TOKEN)
-    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
-    .build()
-)
-application.add_handler(CommandHandler("start", start))
+            logger.error(f"❌ Market scan error: {e}")
+            await asyncio.sleep(45)
 
 # Flask Routes
 @app.route("/", methods=["GET"])
@@ -91,18 +89,23 @@ def index():
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    logger.info(f"📥 Incoming Telegram update: {data}")
-    application.update_queue.put_nowait(Update.de_json(data, application.bot))
+    logger.info(f"📥 Telegram update: {data}")
     return "OK"
 
-# Start App
+# Telegram Bot Setup
+application = (
+    ApplicationBuilder()
+    .token(BOT_TOKEN)
+    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
+    .build()
+)
+
+# Run App
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
     application.run_webhook(
         listen="0.0.0.0",
-        port=port,
+        port=PORT,
         webhook_url=WEBHOOK_URL,
     )
-
