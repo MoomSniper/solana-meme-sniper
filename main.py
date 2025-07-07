@@ -1,82 +1,68 @@
-import os
 import logging
-import asyncio
+import os
 import httpx
-import cloudscraper
+import threading
+import time
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes
+from telegram import Bot
+from telegram.ext import Application, CommandHandler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
+bot = Bot(token=TOKEN)
+application = Application.builder().token(TOKEN).build()
+
 app = Flask(__name__)
 
-# Send Telegram Message
-async def send_telegram_message(text: str):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_ID, "text": text}
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(url, json=payload)
-    except Exception as e:
-        logger.error(f"❌ Failed to send Telegram message: {e}")
-
-# Market Scanner using Dexscreener HTML + cloudscraper
-async def scan_market_loop():
-    scraper = cloudscraper.create_scraper()
-    url = "https://dexscreener.com/solana"
-
-    while True:
-        try:
-            logger.info("⚡️ Scanning Dexscreener HTML...")
-            res = scraper.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            if res.status_code != 200:
-                logger.warning(f"⚠️ Dexscreener returned status {res.status_code}")
-                await asyncio.sleep(30)
-                continue
-
-            html = res.text
-            # You can extract token data here using BeautifulSoup if needed
-            logger.info("✅ Dexscreener HTML loaded successfully.")
-
-            await asyncio.sleep(45)
-
-        except Exception as e:
-            logger.error(f"❌ Dexscreener scrape failed: {e}")
-            await asyncio.sleep(45)
-
-# Telegram Bot Init
-application = (
-    ApplicationBuilder()
-    .token(BOT_TOKEN)
-    .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
-    .build()
-)
-
-# Flask Routes
-@app.route("/", methods=["GET"])
-def index():
-    return "Sniper bot is live."
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-    logger.info(f"📥 Incoming Telegram update: {data}")
-    application.update_queue.put_nowait(Update.de_json(data, application.bot))
-    return "OK"
+    update = request.get_json(force=True)
+    application.update_queue.put(update)
+    return "ok"
 
-# Start App
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot is alive."
+
+async def start(update, context):
+    await update.message.reply_text("Obsidian Mode is active.")
+
+application.add_handler(CommandHandler("start", start))
+
+async def setup_webhook():
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
     logger.info("✅ Telegram webhook set.")
+
+def scan_dexscreener():
+    url = "https://dexscreener.com/solana"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://dexscreener.com/"
+    }
+    try:
+        with httpx.Client(http2=True, timeout=10) as client:
+            res = client.get(url, headers=headers)
+            if res.status_code == 200:
+                logger.info("✅ Dexscreener response received.")
+            else:
+                logger.warning(f"⚠️ Dexscreener returned status {res.status_code}")
+    except Exception as e:
+        logger.error(f"❌ Dexscreener fetch failed: {e}")
+
+def run_scanner():
     logger.info("🧠 Obsidian Mode active. Scanner running.")
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        webhook_url=WEBHOOK_URL,
-    )
+    while True:
+        scan_dexscreener()
+        time.sleep(5)  # adjust scan frequency here
+
+if __name__ == "__main__":
+    threading.Thread(target=run_scanner, daemon=True).start()
+    import asyncio
+    asyncio.run(setup_webhook())
+    application.run_polling()
