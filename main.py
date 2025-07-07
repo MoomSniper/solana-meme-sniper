@@ -32,7 +32,7 @@ async def scan_market_loop():
         "accept": "application/json",
         "x-api-key": SOLANA_TRACKER_API
     }
-    url = "https://public-api.solanatracker.io/v1/tokens/top"
+    url = "https://public-api.solanatracker.io/v1/tokens?chain=solana&limit=50&sort=volume_1h"
 
     while True:
         try:
