@@ -32,7 +32,7 @@ async def scan_market_loop():
         try:
             logger.info("⚡️ Pulling real tokens from Birdeye...")
             url = "https://public-api.birdeye.so/public/tokenlist?sort_by=volume_1h_usd&sort_type=desc"
-            headers = {"X-API-KEY": BIRDEYE_API}
+            headers = {"X-API-KEY": os.environ["BIRDEYE_API"].encode()}
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, headers=headers)
                 data = response.json()
