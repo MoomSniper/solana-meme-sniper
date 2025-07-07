@@ -79,18 +79,15 @@ def webhook():
 def root():
     return "✅ Obsidian Sniper Bot is live."
 
-if __name__ == "__main__":
+async def main():
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
-    asyncio.run(send_telegram_message("🟢 Obsidian Bot Deployed. Scanning in real-time."))
+    await send_telegram_message("🟢 Obsidian Bot Deployed. Scanning in real-time.")
 
-    loop = asyncio.get_event_loop()
+    while True:
+        await scan_market()
+        await asyncio.sleep(4)
 
-    async def run_forever():
-        while True:
-            await scan_market()
-            await asyncio.sleep(4)
-
-    loop.create_task(run_forever())
-
+if __name__ == "__main__":
+    asyncio.run(main())  # ✅ Python 3.11+ safe
     app.run(host="0.0.0.0", port=PORT)
