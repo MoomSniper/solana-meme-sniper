@@ -97,10 +97,12 @@ def webhook():
 
 # Start App
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
     application.run_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 10000)),
+        port=port,
         webhook_url=WEBHOOK_URL,
     )
+
