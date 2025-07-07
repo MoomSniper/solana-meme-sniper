@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-BIRDEYE_API = os.getenv("BIRDEYE_API")
+SOLANA_TRACKER_API = os.getenv("SOLANA_TRACKER_API")
 
 app = Flask(__name__)
 
@@ -26,30 +26,41 @@ async def send_telegram_message(text: str):
     except Exception as e:
         logger.error(f"❌ Failed to send Telegram message: {e}")
 
-# Real Market Scan with Filters (V2)
+# Real Market Scan with Solana Tracker (V2)
 async def scan_market_loop():
+    headers = {
+        "accept": "application/json",
+        "x-api-key": SOLANA_TRACKER_API
+    }
+    url = "https://public-api.solanatracker.io/v1/tokens/top"
+
     while True:
         try:
-            logger.info("⚡️ Pulling real tokens from Birdeye...")
-            url = "https://public-api.birdeye.so/public/tokenlist?sort_by=volume_1h_usd&sort_type=desc"
-            headers = {"X-API-KEY": os.environ["BIRDEYE_API"].encode()}
+            logger.info("⚡️ Scanning live market via Solana Tracker...")
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers)
-                data = response.json()
+                res = await client.get(url, headers=headers)
+                data = res.json()
 
-            tokens = data.get("data", {}).get("tokens", [])[:30]
+            tokens = data.get("data", [])[:40]
             for token in tokens:
-                mc = token.get("market_cap")
-                vol = token.get("volume_1h_usd")
-                buyers = token.get("txns_1h")
-                name = token.get("name")
-                address = token.get("address")
+                mc = token.get("market_cap", 0)
+                vol = token.get("volume_1h", 0)
+                buyers = token.get("transactions_1h", 0)
+                name = token.get("name", "N/A")
+                address = token.get("address", "")
 
                 if not all([mc, vol, buyers]):
                     continue
 
                 if mc < 300_000 and vol > 5_000 and buyers > 15:
-                    msg = f"🚨 ALPHA FOUND\n\n🪙 {name}\n💰 MC: ${mc:,.0f}\n📈 Vol (1h): ${vol:,.0f}\n🛒 Txns: {buyers}\n🔗 https://birdeye.so/token/{address}?chain=solana"
+                    msg = (
+                        f"🚨 ALPHA FOUND\n\n"
+                        f"🪙 {name}\n"
+                        f"💰 MC: ${mc:,.0f}\n"
+                        f"📈 Vol (1h): ${vol:,.0f}\n"
+                        f"🛒 Txns: {buyers}\n"
+                        f"🔗 https://solanatracker.io/token/{address}"
+                    )
                     logger.info(msg)
                     await send_telegram_message(msg)
 
@@ -59,18 +70,20 @@ async def scan_market_loop():
             logger.error(f"❌ Error in market scan: {e}")
             await asyncio.sleep(44)
 
+# /start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 Obsidian Sniper Bot is now live. Watching market 24/7.")
 
+# Telegram App
 application = (
     ApplicationBuilder()
     .token(BOT_TOKEN)
     .post_init(lambda app: asyncio.get_event_loop().create_task(scan_market_loop()))
     .build()
 )
-
 application.add_handler(CommandHandler("start", start))
 
+# Flask Routes
 @app.route("/", methods=["GET"])
 def index():
     return "Sniper bot is live."
@@ -82,6 +95,7 @@ def webhook():
     application.update_queue.put_nowait(Update.de_json(data, application.bot))
     return "OK"
 
+# Start App
 if __name__ == "__main__":
     logger.info("✅ Telegram webhook set.")
     logger.info("🧠 Obsidian Mode active. Scanner running.")
