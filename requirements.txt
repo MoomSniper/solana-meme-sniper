@@ -1,5 +1,5 @@
 Flask[async]==2.3.3
-httpx[http2]==0.27.0
+httpx[http2]==0.24.0
 python-telegram-bot[webhooks]==20.3
 nest_asyncio==1.5.8
 websockets==11.0.3
