@@ -1,47 +1,74 @@
-def predict_multiplier(hype_score: int, smart_wallets: int, liquidity_locked: bool) -> float:
-    """
-    Predicts the potential multiplier of a token.
-    """
-    multiplier = 1.0
+# modules/predictor.py
 
-    if hype_score > 85:
-        multiplier += 1.5
+import random
+
+def predict_multiplier(hype_score, smart_wallets, contract_score, volume):
+    """Predicts potential multiplier based on current signals"""
+    base = 1.0
+
+    # Weight social hype
+    if hype_score > 90:
+        base += 2.0
+    elif hype_score > 80:
+        base += 1.5
     elif hype_score > 70:
-        multiplier += 1.0
-    elif hype_score > 55:
-        multiplier += 0.5
+        base += 1.2
+    else:
+        base += 0.8
 
+    # Weight smart wallets
     if smart_wallets >= 5:
-        multiplier += 1.0
-    elif smart_wallets >= 2:
-        multiplier += 0.5
+        base += 1.8
+    elif smart_wallets >= 3:
+        base += 1.3
+    elif smart_wallets >= 1:
+        base += 0.7
 
-    if liquidity_locked:
-        multiplier += 0.5
+    # Weight contract safety
+    if contract_score == "A":
+        base += 1.5
+    elif contract_score == "B":
+        base += 1.0
+    elif contract_score == "C":
+        base += 0.5
     else:
-        multiplier -= 1.0
+        base -= 1.0
 
-    return round(multiplier, 2)
-
-
-def predict_risk(hype_score: int, contract_risk_score: int, bot_ratio: float) -> str:
-    """
-    Returns risk level: Low / Medium / High
-    """
-    risk_score = 0
-
-    if hype_score < 50:
-        risk_score += 1
-    if contract_risk_score > 5:
-        risk_score += 2
-    if bot_ratio > 0.4:
-        risk_score += 2
-    elif bot_ratio > 0.25:
-        risk_score += 1
-
-    if risk_score <= 1:
-        return "Low"
-    elif risk_score == 2:
-        return "Medium"
+    # Weight volume
+    if volume > 50000:
+        base += 1.5
+    elif volume > 25000:
+        base += 1.0
+    elif volume > 10000:
+        base += 0.5
     else:
-        return "High"
+        base -= 0.5
+
+    # Add noise to simulate variance
+    noise = random.uniform(0.1, 0.4)
+    prediction = round(base + noise, 2)
+
+    # Clamp to realistic floor/ceiling
+    return max(1.0, min(prediction, 30.0))
+
+
+def estimate_risk(contract_score, social_bot_percent):
+    """Estimates coin risk level"""
+    risk = 0
+
+    if contract_score in ["C", "D"]:
+        risk += 2
+    elif contract_score == "B":
+        risk += 1
+
+    if social_bot_percent > 60:
+        risk += 2
+    elif social_bot_percent > 30:
+        risk += 1
+
+    if risk >= 3:
+        return "HIGH"
+    elif risk == 2:
+        return "MEDIUM"
+    else:
+        return "LOW"
