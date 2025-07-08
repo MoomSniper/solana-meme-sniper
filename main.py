@@ -1,36 +1,36 @@
-import os
-import logging
 import asyncio
+import logging
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
 )
-from sniper import run_sniper
+from sniper import run_sniper  # from your sniper.py
 
+# === Logging ===
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# Command: /start
+# === Start command ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 Obsidian Bot Deployed. Sniper scanning live.")
+    await update.message.reply_text("🟢 Obsidian Bot Online. Sniping live alpha.")
 
-# Bot setup
-async def start_bot():
-    application = ApplicationBuilder().token(os.environ.get("BOT_TOKEN")).build()
-    application.add_handler(CommandHandler("start", start))
+# === Bot Entry ===
+async def main():
+    bot_token = "8086252105:AAF-_xAzlorVkq-Lq9mGP2lLA99dRYj12BQ"  # your latest bot token
+    app = ApplicationBuilder().token(bot_token).build()
 
+    app.add_handler(CommandHandler("start", start))
+
+    # Launch sniper in the background
     asyncio.create_task(run_sniper())
-    logger.info("🧠 Obsidian Mode active. Scanner running.")
 
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.updater.idle()
+    logger.info("✅ Bot started in polling mode. Awaiting commands.")
+    await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(start_bot())
+    asyncio.run(main())
