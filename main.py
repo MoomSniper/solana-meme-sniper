@@ -15,7 +15,7 @@ import nest_asyncio
 load_dotenv()
 bot_token = os.getenv("BOT_TOKEN")
 
-# Apply patch for nested loops (fixes RuntimeError)
+# Apply nested event loop patch
 nest_asyncio.apply()
 
 # Logging
@@ -25,19 +25,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# /start command
+# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 Obsidian Bot Online. Sniping live alpha.")
 
-# Main bot logic
+# Run bot
 async def bot_main():
     app = ApplicationBuilder().token(bot_token).build()
     app.add_handler(CommandHandler("start", start))
-
     asyncio.create_task(run_sniper())
     logger.info("✅ Bot started in polling mode. Awaiting commands.")
     await app.run_polling()
 
-# Final entrypoint using existing loop safely
+# Start the event loop safely (no asyncio.run())
 loop = asyncio.get_event_loop()
 loop.run_until_complete(bot_main())
