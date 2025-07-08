@@ -1,38 +1,81 @@
+import aiohttp
+import re
 import logging
-import random
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-# Placeholder logic - upgrade to real scraping APIs (X + TG) when available
-async def analyze_socials(address):
+# === Utility ===
+def extract_mentions(text):
+    hashtags = re.findall(r"#\w+", text)
+    return hashtags
+
+def is_organic(text):
+    # Basic filter for botted spam
+    suspicious_keywords = ["airdrops", "giveaway", "claim now", "retweet to win"]
+    return not any(keyword.lower() in text.lower() for keyword in suspicious_keywords)
+
+# === Social Scraper ===
+async def scrape_twitter_x(session, coin_name):
     try:
-        logger.info(f"📡 Scraping socials for {address}...")
+        query = f"{coin_name} crypto"
+        url = f"https://nitter.net/search?f=tweets&q={query}&since=&until=&near="  # Nitter is a lightweight Twitter frontend
 
-        # Simulate scraped values (to be replaced with live APIs or proxy scraping)
-        twitter_mentions = random.randint(5, 80)
-        telegram_posts = random.randint(10, 100)
-        bot_likelihood = random.uniform(0, 0.4)  # < 0.3 = solid engagement
+        async with session.get(url, timeout=10) as response:
+            html = await response.text()
+            soup = BeautifulSoup(html, "html.parser")
+            tweets = soup.find_all("div", class_="tweet-content")
+            mentions = []
+            count = 0
 
-        # Calculate post frequency score
-        velocity_score = min(1.0, (twitter_mentions + telegram_posts / 2) / 100)
+            for tweet in tweets:
+                text = tweet.get_text().strip()
+                if is_organic(text):
+                    mentions.extend(extract_mentions(text))
+                    count += 1
 
-        result = {
-            "twitter_mentions": twitter_mentions,
-            "telegram_posts": telegram_posts,
-            "bot_percentage": round(bot_likelihood * 100, 2),
-            "velocity_score": round(velocity_score, 3),
-            "status": "🔥 High Hype" if velocity_score > 0.7 else "⚠️ Low Traction"
-        }
-
-        logger.info(f"📢 Social Hype: {result}")
-        return result
+            score = min(count * 10, 100)
+            return {"platform": "twitter", "mentions": list(set(mentions)), "score": score, "raw_count": count}
 
     except Exception as e:
-        logger.error(f"❌ Failed to scrape socials: {e}")
-        return {
-            "twitter_mentions": 0,
-            "telegram_posts": 0,
-            "bot_percentage": 100.0,
-            "velocity_score": 0.0,
-            "status": "❌ Error"
-        }
+        logger.error(f"❌ Twitter scrape failed: {e}")
+        return {"platform": "twitter", "mentions": [], "score": 0, "raw_count": 0}
+
+async def scrape_telegram(session, token_symbol):
+    try:
+        query = token_symbol.lower()
+        url = f"https://t.me/s/{query}"
+
+        async with session.get(url, timeout=10) as response:
+            html = await response.text()
+            soup = BeautifulSoup(html, "html.parser")
+            posts = soup.find_all("div", class_="tgme_widget_message_text")
+            count = len(posts)
+
+            score = min(count * 5, 100)
+            return {"platform": "telegram", "score": score, "raw_count": count}
+
+    except Exception as e:
+        logger.error(f"❌ Telegram scrape failed: {e}")
+        return {"platform": "telegram", "score": 0, "raw_count": 0}
+
+# === Combined Social Hype Check ===
+async def get_social_score(token_name, token_symbol):
+    try:
+        async with aiohttp.ClientSession() as session:
+            twitter_task = scrape_twitter_x(session, token_name)
+            telegram_task = scrape_telegram(session, token_symbol)
+
+            twitter, telegram = await asyncio.gather(twitter_task, telegram_task)
+            combined_score = round((twitter["score"] + telegram["score"]) / 2)
+
+            return {
+                "score": combined_score,
+                "details": {
+                    "twitter": twitter,
+                    "telegram": telegram
+                }
+            }
+    except Exception as e:
+        logger.error(f"❌ Social score failed: {e}")
+        return {"score": 0, "details": {}}
