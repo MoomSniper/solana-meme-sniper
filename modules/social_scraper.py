@@ -1,31 +1,38 @@
 import logging
 import random
-import time
 
-async def scrape_social_signals(token_name: str, token_address: str) -> dict:
-    """
-    Simulates scraping social media platforms to evaluate hype level, bot activity, and post frequency.
-    Replace this logic with real Twitter/X and Telegram API integration when needed.
-    """
+logger = logging.getLogger(__name__)
 
-    logging.info(f"🔍 [SOCIAL SCRAPER] Scanning socials for: {token_name} | {token_address}")
+# Placeholder logic - upgrade to real scraping APIs (X + TG) when available
+async def analyze_socials(address):
+    try:
+        logger.info(f"📡 Scraping socials for {address}...")
 
-    # Placeholder simulated values
-    hype_score = random.randint(72, 98)  # Confidence level based on real traction
-    bot_likelihood = round(random.uniform(0.02, 0.18), 3)  # 0.00 = clean, >0.2 = suspicious
-    post_velocity = random.randint(45, 300)  # Posts per hour
+        # Simulate scraped values (to be replaced with live APIs or proxy scraping)
+        twitter_mentions = random.randint(5, 80)
+        telegram_posts = random.randint(10, 100)
+        bot_likelihood = random.uniform(0, 0.4)  # < 0.3 = solid engagement
 
-    # Simulate API delay
-    time.sleep(0.8)
+        # Calculate post frequency score
+        velocity_score = min(1.0, (twitter_mentions + telegram_posts / 2) / 100)
 
-    logging.info(
-        f"✅ [SOCIAL ANALYSIS] Hype Score: {hype_score}, Bot %: {bot_likelihood}, Posts/hr: {post_velocity}"
-    )
+        result = {
+            "twitter_mentions": twitter_mentions,
+            "telegram_posts": telegram_posts,
+            "bot_percentage": round(bot_likelihood * 100, 2),
+            "velocity_score": round(velocity_score, 3),
+            "status": "🔥 High Hype" if velocity_score > 0.7 else "⚠️ Low Traction"
+        }
 
-    return {
-        "token_name": token_name,
-        "token_address": token_address,
-        "hype_score": hype_score,
-        "bot_likelihood": bot_likelihood,
-        "post_velocity": post_velocity
-    }
+        logger.info(f"📢 Social Hype: {result}")
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Failed to scrape socials: {e}")
+        return {
+            "twitter_mentions": 0,
+            "telegram_posts": 0,
+            "bot_percentage": 100.0,
+            "velocity_score": 0.0,
+            "status": "❌ Error"
+        }
