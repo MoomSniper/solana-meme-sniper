@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -8,37 +9,37 @@ from telegram.ext import (
     ContextTypes,
 )
 from sniper import run_sniper
-
 import nest_asyncio
+
+# Load environment variables
+load_dotenv()
+bot_token = os.getenv("BOT_TOKEN")
+
+# Allow nested event loop (for VPS, Jupyter, etc.)
 nest_asyncio.apply()
 
-# === Logging ===
+# Logging setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# === Start Command ===
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 Obsidian Bot Online. Sniping live alpha.")
 
-# === Setup and Run ===
-async def launch_bot():
-    bot_token = os.getenv("BOT_TOKEN", "8086252105:AAF-_xAzlorVkq-Lq9mGP2lLA99dRYj12BQ")
+# Actual bot logic
+async def bot_main():
     app = ApplicationBuilder().token(bot_token).build()
-
     app.add_handler(CommandHandler("start", start))
 
+    # Start sniper task
     asyncio.create_task(run_sniper())
 
     logger.info("✅ Bot started in polling mode. Awaiting commands.")
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await app.updater.idle()
+    await app.run_polling()
 
-# === Start Everything ===
+# Main entry
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(launch_bot())
+    asyncio.get_event_loop().run_until_complete(bot_main())
