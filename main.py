@@ -7,9 +7,8 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
-from sniper import run_sniper  # from your sniper.py
+from sniper import run_sniper
 
-# Patch event loop to avoid RuntimeError in VPS or nested envs
 import nest_asyncio
 nest_asyncio.apply()
 
@@ -24,18 +23,22 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 Obsidian Bot Online. Sniping live alpha.")
 
-# === Bot Entry ===
-async def main():
+# === Setup and Run ===
+async def launch_bot():
     bot_token = os.getenv("BOT_TOKEN", "8086252105:AAF-_xAzlorVkq-Lq9mGP2lLA99dRYj12BQ")
     app = ApplicationBuilder().token(bot_token).build()
 
     app.add_handler(CommandHandler("start", start))
 
-    # Launch sniper in background
     asyncio.create_task(run_sniper())
 
     logger.info("✅ Bot started in polling mode. Awaiting commands.")
-    await app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
 
+# === Start Everything ===
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(launch_bot())
