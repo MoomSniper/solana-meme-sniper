@@ -59,7 +59,6 @@ def format_alert(token):
     link = f"https://dexscreener.com/solana/{address}"
 
     return (
-        message = (
     "🚨 *Sniper Alert - Potential Alpha*\n"
     f"Name: {name}\n"
     f"MC: ${mc:,}\n"
