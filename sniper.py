@@ -59,20 +59,15 @@ def format_alert(token):
     link = f"https://dexscreener.com/solana/{address}"
 
     return (
-        f"ð¨ *Sniper Alert - Potential Alpha*
-
-"
-        f"*Token:* {name} (${symbol})
-"
-        f"*Volume:* ${volume:,.0f}
-"
-        f"*Market Cap:* ${market_cap:,.0f}
-"
-        f"[Dexscreener Chart]({link})
-
-"
-        f"#solana #memecoin #sniper"
-    )
+        message = (
+    "🚨 *Sniper Alert - Potential Alpha*\n"
+    f"Name: {name}\n"
+    f"MC: ${mc:,}\n"
+    f"Volume: ${vol:,}\n"
+    f"Buyers: {buyers}\n"
+    f"Score: {alpha_score}\n"
+    f"https://birdeye.so/token/{token_address}?chain=solana"
+)
 
 async def send_alert(token):
     try:
