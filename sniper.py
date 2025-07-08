@@ -1,45 +1,40 @@
-import time
-import os
-import requests
+import asyncio
 import logging
 from telegram import Bot
 
-# === BASIC CONFIG ===
-TELEGRAM_ID = os.environ.get("TELEGRAM_ID")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# === Config ===
+BOT_TOKEN = "8086252105:AAF-_xAzlorVkq-Lq9mGP2lLA99dRYj12BQ"
+TELEGRAM_ID = "6881063420"
 
-# === SETUP LOGGING ===
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-log = logging.getLogger()
-
-# === TELEGRAM BOT SETUP ===
+# === Setup ===
 bot = Bot(token=BOT_TOKEN)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def send_telegram(msg):
+# === Send Alert ===
+async def send_telegram(msg: str):
     try:
-        bot.send_message(chat_id=TELEGRAM_ID, text=msg)
-        log.info(f"Sent to Telegram: {msg}")
+        await bot.send_message(chat_id=TELEGRAM_ID, text=msg)
+        logger.info(f"Sent: {msg}")
     except Exception as e:
-        log.error(f"Failed to send Telegram message: {e}")
+        logger.error(f"Telegram send failed: {e}")
 
-# === MAIN SCANNER ===
-def run_sniper_sync():
-    log.info("🟢 Sniper bot started.")
-    send_telegram("🚀 Sniper bot is live and scanning...")
+# === Alpha Scanner (Stub for now) ===
+async def run_sniper():
+    logger.info("🧠 Obsidian Mode Sniper Live")
+    await send_telegram("🚀 Sniper launched. Scanning live...")
 
     while True:
         try:
-            log.info("🔎 Scanning for new coins...")
-            time.sleep(5)
+            logger.info("🔎 Scanning...")
+            await asyncio.sleep(10)  # Simulate scan
 
-            if int(time.time()) % 30 < 5:
-                alert = f"🪙 Fake Coin Detected! MC: ${round(time.time() % 100000)}"
-                send_telegram(alert)
+            # Simulated fake coin call
+            if int(asyncio.get_event_loop().time()) % 30 < 10:
+                alert = f"🪙 [FAKE COIN] Live Alpha - MC: ${round(asyncio.get_event_loop().time() % 100000)}"
+                await send_telegram(alert)
+
         except Exception as e:
-            log.error(f"Sniper error: {e}")
-            send_telegram(f"❌ Sniper crashed: {e}")
-            time.sleep(10)
-
-async def run_sniper():
-    import asyncio
-    await asyncio.to_thread(run_sniper_sync)
+            logger.error(f"Sniper error: {e}")
+            await send_telegram(f"❌ Error: {e}")
+            await asyncio.sleep(5)
