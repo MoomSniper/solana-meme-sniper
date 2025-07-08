@@ -1,59 +1,52 @@
+import asyncio
 import logging
-from modules.social_scraper import scrape_social_signals
-from modules.alpha_scoring import get_coin_details
+from modules.social_scraper import analyze_socials
+from modules.contract_safety import analyze_contract
+from modules.wallets import detect_smart_wallets
+from modules.holder_analysis import analyze_holders
 
 logger = logging.getLogger(__name__)
 
-async def run_deep_research(symbol, mint):
+async def run_deep_research(coin_data):
     try:
-        logger.info(f"🔬 Deep research initiated for {symbol} ({mint})")
+        logger.info("🔬 Starting Deep Research Mode...")
 
-        # Pull contract + liquidity data from Solana Tracker
-        coin_data = await get_coin_details(mint)
-        if not coin_data:
-            logger.warning(f"❌ Solana Tracker returned no data for {symbol}")
-            return "Could not fetch coin details."
+        address = coin_data.get("address")
+        symbol = coin_data.get("baseToken", {}).get("symbol", "???")
 
-        # Pull Telegram + Twitter data
-        social = await fetch_social_stats(symbol)
-        if not social:
-            logger.warning(f"⚠️ No social data returned for {symbol}")
-            return "Social data unavailable."
-
-        # Assign intelligence layers
-        hype_score = social.get('hype_score', 0)
-        bot_ratio = social.get('bot_ratio', 1)
-        liquidity_locked = coin_data.get("liquidity_locked", False)
-        holders = coin_data.get("holders", 0)
-
-        # Trigger exit if any fatal flaws
-        if not liquidity_locked or bot_ratio > 0.3 or holders < 50:
-            return (
-                f"<b>🚨 EXIT NOW — Too risky</b>\n"
-                f"🔐 LP Locked: {liquidity_locked}\n"
-                f"🤖 Bot %: {round(bot_ratio*100)}%\n"
-                f"👥 Holders: {holders}"
-            )
-
-        # HOLD zone
-        if hype_score >= 85 and holders >= 150:
-            return (
-                f"<b>✅ HOLD</b>\n"
-                f"🔥 Hype Score: {hype_score}\n"
-                f"🤖 Bot %: {round(bot_ratio*100)}%\n"
-                f"🔐 LP Locked: {liquidity_locked}\n"
-                f"👥 Holders: {holders}"
-            )
-
-        # TAKE PROFIT zone
-        return (
-            f"<b>⚠️ PARTIAL TAKE PROFIT</b>\n"
-            f"📈 Hype Score: {hype_score}\n"
-            f"🤖 Bot %: {round(bot_ratio*100)}%\n"
-            f"🔐 LP Locked: {liquidity_locked}\n"
-            f"👥 Holders: {holders}"
+        # Run async scans in parallel
+        contract_result, holders_result, smart_wallets, socials = await asyncio.gather(
+            analyze_contract(address),
+            analyze_holders(address),
+            detect_smart_wallets(address),
+            analyze_socials(address)
         )
 
+        logger.info(f"🔐 Contract Safety: {contract_result}")
+        logger.info(f"👤 Holder Breakdown: {holders_result}")
+        logger.info(f"🐳 Smart Wallets In: {smart_wallets}")
+        logger.info(f"📊 Social Analysis: {socials}")
+
+        # Estimate projected multiplier and hype strength
+        projected_multiplier = 3.0
+        if smart_wallets >= 3 and socials['velocity_score'] > 0.75:
+            projected_multiplier = 5.0
+        if contract_result['rug_risk'] == "low" and holders_result['top_10_hold'] < 40:
+            projected_multiplier += 2
+
+        research_summary = {
+            "contract_safety": contract_result,
+            "holder_stats": holders_result,
+            "smart_wallets": smart_wallets,
+            "socials": socials,
+            "projected_multiplier": projected_multiplier,
+            "hype_score": socials["velocity_score"],
+            "risk_rating": contract_result["rug_risk"]
+        }
+
+        logger.info(f"✅ Deep Research Complete: {symbol}")
+        return research_summary
+
     except Exception as e:
-        logger.error(f"[Deep Research Error] {e}")
-        return "Deep research failed. Check logs."
+        logger.error(f"❌ Deep Research failed: {e}")
+        return None
