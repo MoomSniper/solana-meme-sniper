@@ -1,32 +1,34 @@
-# config.py — Obsidian Mode Config
+import os
 
-BIRDEYE_API = "6bda2c7ab409427f8632ad6c244d55e4"
-HELIUS_API = "e61da153-6986-43c3-b19f-38099c1e335a"
+# Load environment variables from .env
+from dotenv import load_dotenv
+load_dotenv()
 
-BOT_TOKEN = "8086252105:AAF-_xAzlorVkq-Lq9mGP2lLA99dRYj12BQ"
-TELEGRAM_ID = "6881063420"
+# API Keys
+BIRDEYE_API = os.getenv("BIRDEYE_API")
+HELIUS_API = os.getenv("HELIUS_API")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_ID = int(os.getenv("TELEGRAM_ID"))
 
-# Scanner logic
-MIN_VOLUME = 5000  # USD
-MAX_MARKET_CAP = 300000  # USD
-MIN_SCORE = 85  # Alpha score threshold
+# Scanner Controls
+SCAN_INTERVAL = 10  # seconds between scans (tuned for 30k/mo usage)
+MIN_VOLUME = 4500   # minimum 24h volume
+MIN_BUYERS = 8      # minimum number of buyers
+MAX_MC = 300000     # max market cap
+MIN_MC = 20000      # min market cap
 
-# Alert filtering
-REQUIRED_TELEGRAM_MEMBERS = 150
-REQUIRED_TWITTER_FOLLOWERS = 200
-REQUIRED_LIQUIDITY_LOCK = True
-REQUIRED_HYPE_SCORE = 70
+# Sniper Logic Thresholds
+ALPHA_SCORE_THRESHOLD = 85
+ALPHA_CONFIDENCE_RECOMMEND = 90
 
-# Behavior
-ALERT_INTERVAL = 10  # Seconds between alert checks
-COOLDOWN_AFTER_CALL = 180  # Seconds to avoid spam
-DEEP_RESEARCH_DELAY = 90  # Seconds after initial alpha call
+# Runtime Limits
+SLEEP_START_HOUR = 0   # 12 AM
+SLEEP_END_HOUR = 7     # 7 AM
 
-# Risk logic
-MIN_HOLDER_COUNT = 25
-MAX_BUY_TAX = 5  # %
-MAX_SELL_TAX = 5  # %
-SMART_WALLET_SIGNAL_WEIGHT = 1.5
+# Exit Intelligence
+VOLUME_DROP_THRESHOLD = 0.33   # 33% drop triggers "EXIT NOW"
+SMART_WALLET_EXIT_COUNT = 3    # how many whales have to exit before alert
 
-# Internal
-VERSION = "Obsidian Mode++"
+# Social AI Layer
+ENABLE_SOCIAL_SCAN = True
+SOCIAL_ENGAGEMENT_THRESHOLD = 0.7  # 70%+ real engagement
