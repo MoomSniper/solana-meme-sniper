@@ -19,35 +19,31 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Create the bot application once, globally
+bot_token = os.environ.get("BOT_TOKEN")
+application = ApplicationBuilder().token(bot_token).build()
+
 # Command: /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 Obsidian Bot Deployed. Scanning in real-time.")
 
+application.add_handler(CommandHandler("start", start))
+
 # Bot setup
 async def start_bot():
-    bot_token = os.environ.get("BOT_TOKEN")
-    application = ApplicationBuilder().token(bot_token).build()
-
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-
-    # Set webhook
     webhook_url = f"{os.environ.get('WEBHOOK_URL')}/{bot_token}"
     await application.initialize()
     await application.bot.set_webhook(url=webhook_url)
     logger.info("✅ Telegram webhook set.")
 
-    # Start DEX scanner
     asyncio.create_task(scan_dexscreener())
     logger.info("🧠 Obsidian Mode active. Scanner running.")
 
     await application.start()
 
 # Webhook route
-@app.route(f"/{os.environ['BOT_TOKEN']}", methods=["POST"])
+@app.route(f"/{bot_token}", methods=["POST"])
 async def telegram_webhook():
-    from telegram.ext import Application
-    application = ApplicationBuilder().token(os.environ.get("BOT_TOKEN")).build()
     update = Update.de_json(request.get_json(force=True), application.bot)
     await application.process_update(update)
     return "OK", 200
