@@ -59,4 +59,4 @@ async def start_bot():
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(start_bot())
-    app.run(port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
