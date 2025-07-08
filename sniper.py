@@ -1,18 +1,19 @@
 import time
-import requests
 import logging
+import asyncio
 from telegram import Bot
+import os
 
-# === BASIC CONFIG ===
-TELEGRAM_ID = '6881063420'
-BOT_TOKEN = '7619311236:AAFzjBR3N1oVi31J2WqU4cgZDiJgBxDPWRo'
-HELIUS_API = 'e61da153-6986-43c3-b19f-380099c1e335a'
+# === CONFIG ===
+TELEGRAM_ID = os.getenv('TELEGRAM_ID')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+HELIUS_API = os.getenv('HELIUS_API')
 
-# === SETUP LOGGING ===
+# === LOGGING ===
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 log = logging.getLogger()
 
-# === TELEGRAM BOT SETUP ===
+# === TELEGRAM BOT ===
 bot = Bot(token=BOT_TOKEN)
 
 def send_telegram(msg):
@@ -22,25 +23,23 @@ def send_telegram(msg):
     except Exception as e:
         log.error(f"Failed to send Telegram message: {e}")
 
-# === MAIN SCANNER ===
-def run_sniper():
-    log.info("🟢 Sniper bot started.")
-    send_telegram("🚀 Sniper bot is live and scanning...")
+# === OBSIDIAN SCAN LOGIC ===
+async def scan_dexscreener():
+    log.info("🧠 Obsidian Mode scan initialized.")
+    send_telegram("🤖 Obsidian Mode online. Scanning for alpha coins...")
 
     while True:
         try:
-            # Dummy scan simulation (replace this with real logic later)
-            log.info("🔎 Scanning for new coins...")
-            time.sleep(5)
+            # Replace with real alpha detection logic
+            log.info("🔎 Scanning for new coins (stub)...")
+            await asyncio.sleep(5)
 
-            # Fake alpha (simulate alert every 30s)
+            # Fake alert
             if int(time.time()) % 30 < 5:
-                alert = f"🪙 Fake Coin Detected! MC: ${round(time.time() % 100000)}"
+                mc = round(time.time() % 100000)
+                alert = f"🪙 Alpha Detected!\nMC: ${mc}\nhttps://dexscreener.com/solana/FAKE"
                 send_telegram(alert)
         except Exception as e:
             log.error(f"Sniper error: {e}")
             send_telegram(f"❌ Sniper crashed: {e}")
-            time.sleep(10)
-
-if __name__ == '__main__':
-    run_sniper()
+            await asyncio.sleep(10)
