@@ -63,7 +63,7 @@ async def run_sniper():
                     time.sleep(60)
                     return
 
-            time.sleep(15)
+            await time.sleep(15)
 
         except Exception as e:
             logger.error(f"❌ Error in sniper: {e}")
