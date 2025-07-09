@@ -10,40 +10,45 @@ from telegram.ext import (
 )
 from dex_scraper import run_sniper
 
-# === Load env variables ===
+# === Load environment variables ===
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN is missing from environment variables.")
+    raise ValueError("❌ BOT_TOKEN is missing from .env")
 
-# === Logging ===
+# === Logging setup ===
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# === Start command ===
+# === Telegram command: /start ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 Obsidian Bot Online. Sniping live alpha.")
+    user = update.effective_user.first_name or "user"
+    await update.message.reply_text(f"🟢 Obsidian Bot Online.\nWelcome, {user}. Sniping live alpha...")
 
-# === Test command ===
+# === Telegram command: /test ===
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Test alert! Bot can send messages.")
+    await update.message.reply_text("✅ Test alert received. Bot is working.")
 
-# === Bot entry ===
+# === Bot logic ===
 async def run_bot():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("test", test))  # You missed this line
+    app.add_handler(CommandHandler("test", test))
 
-    # Launch sniper engine in background
-    asyncio.create_task(run_sniper())
+    # Run sniper in the background
+    try:
+        asyncio.create_task(run_sniper())
+        logger.info("🚀 Sniper task launched.")
+    except Exception as e:
+        logger.error(f"❌ Failed to start sniper: {e}")
 
-    logger.info("✅ Bot started in polling mode. Awaiting commands.")
+    logger.info("✅ Bot started in polling mode.")
     await app.run_polling()
 
-# === Run ===
+# === Entrypoint ===
 if __name__ == "__main__":
     import nest_asyncio
     nest_asyncio.apply()
