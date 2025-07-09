@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 # === Start command ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 Obsidian Bot Online. Sniping live alpha.")
-
+    
+# === Test command ===
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Test alert! Bot can send messages.")
+    
 # === Bot entry ===
 async def run_bot():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
