@@ -8,7 +8,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
-from sniper import run_sniper
+from dex_scraper import run_sniper
 
 # === Load env variables ===
 load_dotenv()
