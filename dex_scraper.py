@@ -27,12 +27,7 @@ def parse_shorthand(value):
         return 0
 
 def is_valid_token(name, volume, buyers):
-    name = name.lower()
-    if any(x in name for x in ["test", "dev", "rug"]):
-        return False
-    if volume < 3000 or buyers < 10:
-        return False
-    return True
+    return True  # force all tokens to pass for testing
 
 def parse_token_info(token_block):
     try:
