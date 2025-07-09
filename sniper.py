@@ -82,9 +82,7 @@ async def run_sniper():
     while True:
         try:
             tokens = fetch_tokens()
-            for token in tokens:
-                address = token.get("address")
-                if address in sent_alerts:
+            logger.info(f"🔄 Checking token: {token.get('symbol')} | Volume: {token.get('volume_24h')} | MC: {token.get('mc')}")
                     continue
                 if is_valid_token(token):
                     await send_alert(token)
