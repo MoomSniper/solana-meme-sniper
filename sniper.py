@@ -26,7 +26,7 @@ def get_top_coins(limit=30):
     return data.get("data", [])
 
 
-def run_sniper():
+async def run_sniper():
     logger.info("🧠 Obsidian Mode Sniper Live")
 
     while True:
