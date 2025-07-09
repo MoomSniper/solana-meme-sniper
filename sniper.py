@@ -1,49 +1,68 @@
-import time
+# sniper.py
 import logging
-from birdeye import get_top_coins
-from telegram_bot import bot, TELEGRAM_ID
+import requests
+import time
+import os
 
-logger = logging.getLogger(__name__)
+from telegram import Bot
 
-def format_price(price):
-    try:
-        return round(float(price), 6)
-    except:
-        return 0
+TELEGRAM_ID = os.getenv("TELEGRAM_ID")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(token=BOT_TOKEN)
 
-async def run_test_sniper():
-    logger.info("🧪 Running test sniper...")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("sniper")
+
+BIRDEYE_API = os.getenv("BIRDEYE_API")
+HEADERS = {"X-API-KEY": BIRDEYE_API}
+
+
+def get_top_coins(limit=30):
+    url = f"https://public-api.birdeye.so/public/tokenlist?sort_by=volume_24h&sort_type=desc&limit={limit}&offset=0"
+    response = requests.get(url, headers=HEADERS)
+    data = response.json()
+    return data.get("data", [])
+
+
+def run_sniper():
+    logger.info("🧠 Obsidian Mode Sniper Live")
 
     while True:
-        coins = get_top_coins()
-        for coin in coins:
-            try:
-                symbol = coin.get("symbol")
-                token_name = coin.get("name")
-                token_symbol = coin.get("symbol")
-                address = coin.get("address")
-                price = format_price(coin.get("price", 0))
-                volume = float(coin.get("volume_24h", 0))
-                market_cap = float(coin.get("mc", 0))
-                dexscreener_url = f"https://dexscreener.com/solana/{address}"
+        try:
+            logger.info("🔎 Scanning...")
 
-                if market_cap >= 80000 and volume >= 25000:
+            coins = get_top_coins()
+            for coin in coins:
+                name = coin["name"]
+                symbol = coin["symbol"]
+                address = coin["address"]
+                volume = float(coin["volume_24h"])
+                market_cap = float(coin.get("market_cap", 0))
+
+                if market_cap >= 100_000 and volume >= 20_000:
+                    price = coin["price"]
+                    url = f"https://birdeye.so/token/{address}?chain=solana"
+
                     text = (
-                        f"🔔 *Test Coin Alert!*\n\n"
-                        f"Name: {token_name}\n"
-                        f"Symbol: {token_symbol}\n"
-                        f"Price: ${price:.6f}\n"
-                        f"24h Volume: ${int(volume):,}\n"
-                        f"Market Cap: ${int(market_cap):,}\n"
-                        f"[Buy Link (DEX Screener)]({dexscreener_url})"
+                        f"💥 *Test Coin Alert!*\n\n"
+                        f"*Name:* {name} ({symbol})\n"
+                        f"*Price:* ${price:.6f}\n"
+                        f"*Market Cap:* ${int(market_cap):,}\n"
+                        f"*24h Volume:* ${int(volume):,}\n"
+                        f"[View on Birdeye]({url})"
                     )
 
-                    await bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="Markdown")
-                    logger.info(f"✅ Alert sent for {symbol}")
-                    return True
+                    try:
+                        bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="Markdown", disable_web_page_preview=True)
+                        logger.info("✅ Alert sent to Telegram")
+                    except Exception as e:
+                        logger.error(f"Telegram send failed: {e}")
 
-            except Exception as e:
-                logger.error(f"Error parsing coin: {e}")
-                continue
+                    time.sleep(60)
+                    return
 
-        time.sleep(5)
+            time.sleep(15)
+
+        except Exception as e:
+            logger.error(f"❌ Error in sniper: {e}")
+            time.sleep(10)
