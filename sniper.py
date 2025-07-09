@@ -33,7 +33,7 @@ def filter_and_alert(coins):
             volume = float(coin.get("volume_24h", 0))
             market_cap = float(coin.get("mc", 0))
             if market_cap >= 80000 and volume >= 25000:
-                text = f"ð¢ *Test Coin Alert!*
+                text = f"🔔 *Test Coin Alert!*"
 {name} ({symbol})
 MC: ${int(market_cap):,}
 24h Volume: ${int(volume):,}
