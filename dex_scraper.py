@@ -72,13 +72,18 @@ async def run_sniper():
                     blocks = soup.select("div.dapp-trading-pair")
 
                     for block in blocks:
-    token = parse_token_info(block)
-    logger.info(f"🔍 Scanned token block: {token}")
-    if not token or token["address"] in sent_tokens:
-        continue
-    if is_valid_token(token["name"], token["volume"], token["buyers"]):
-        await send_alert(token)
-        sent_tokens.add(token["address"])
+                        token = parse_token_info(block)
+                        if not token:
+                            continue
+                        logger.info(f"🔍 Scanned token: {token['name']}")
+
+                        if token["address"] in sent_tokens:
+                            continue
+                        if is_valid_token(token["name"], token["volume"], token["buyers"]):
+                            await send_alert(token)
+                            sent_tokens.add(token["address"])
+
         except Exception as e:
             logger.error(f"Scraper error: {e}")
+
         await asyncio.sleep(SCAN_INTERVAL)
