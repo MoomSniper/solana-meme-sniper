@@ -23,6 +23,7 @@ sent_alerts = set()
 
 # === Helper Functions ===
  fetch_tokens():
+   def fetch_tokens():
     try:
         response = requests.get(DEX_API, headers=HEADERS)
         data = response.json()
