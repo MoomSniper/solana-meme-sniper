@@ -22,7 +22,7 @@ MAX_REQUESTS_PER_DAY = 1000
 sent_alerts = set()
 
 # === Helper Functions ===
-def fetch_tokens():
+ fetch_tokens():
     try:
         response = requests.get(DEX_API, headers=HEADERS)
         data = response.json()
@@ -82,6 +82,7 @@ async def run_sniper():
     while True:
         try:
             tokens = fetch_tokens()  # ✅ THIS WAS MISSING
+logger.info(f"✅ Pulled {len(tokens)} tokens from Birdeye")
             for token in tokens:
                 address = token.get("address")
                 logger.info(f"🔄 Checking token: {token.get('symbol')} | Volume: {token.get('volume_24h')} | MC: {token.get('mc')}")
