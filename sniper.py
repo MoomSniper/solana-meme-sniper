@@ -81,9 +81,13 @@ async def run_sniper():
     logger.info("🧠 Obsidian Mode Sniper Live")
     while True:
         try:
-            tokens = fetch_tokens()
-            logger.info(f"🔄 Checking token: {token.get('symbol')} | Volume: {token.get('volume_24h')} | MC: {token.get('mc')}")
+               for token in tokens:
+                address = token.get("address")
+                logger.info(f"🔄 Checking token: {token.get('symbol')} | Volume: {token.get('volume_24h')} | MC: {token.get('mc')}")
+
+                if address in sent_alerts:
                     continue
+
                 if is_valid_token(token):
                     await send_alert(token)
                     sent_alerts.add(address)
