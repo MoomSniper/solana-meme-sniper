@@ -3,7 +3,7 @@ import logging
 import requests
 import time
 import os
-
+from dotenv import load_dotenv
 from telegram import Bot
 
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
