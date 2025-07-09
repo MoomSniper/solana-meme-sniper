@@ -8,7 +8,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
-from dex_scraper import run_sniper
+from dex_scraper_ws import run_ws_sniper
 
 # === Load environment variables ===
 load_dotenv()
@@ -40,7 +40,7 @@ async def run_bot():
 
     # Run sniper in the background
     try:
-        asyncio.create_task(run_sniper())
+        asyncio.create_task(run_ws_sniper())
         logger.info("🚀 Sniper task launched.")
     except Exception as e:
         logger.error(f"❌ Failed to start sniper: {e}")
