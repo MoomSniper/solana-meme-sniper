@@ -81,7 +81,8 @@ async def run_sniper():
     logger.info("🧠 Obsidian Mode Sniper Live")
     while True:
         try:
-               for token in tokens:
+            tokens = fetch_tokens()
+            for token in tokens:
                 address = token.get("address")
                 logger.info(f"🔄 Checking token: {token.get('symbol')} | Volume: {token.get('volume_24h')} | MC: {token.get('mc')}")
 
@@ -91,7 +92,9 @@ async def run_sniper():
                 if is_valid_token(token):
                     await send_alert(token)
                     sent_alerts.add(address)
+
             logger.info("🔎 Scanning...")
         except Exception as e:
             logger.error(f"Sniper error: {e}")
+
         await asyncio.sleep(SCAN_INTERVAL)
