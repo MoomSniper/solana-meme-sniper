@@ -1,59 +1,49 @@
-import asyncio
-import logging
-import os
 import time
-import requests
-from telegram import Bot
+import logging
+from birdeye import get_top_coins
+from telegram_bot import bot, TELEGRAM_ID
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("sniper-test")
+logger = logging.getLogger(__name__)
 
-BIRDEYE_API = os.getenv("BIRDEYE_API")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_ID = os.getenv("TELEGRAM_ID")
-
-bot = Bot(token=BOT_TOKEN)
-
-def get_top_coins():
-    url = "https://public-api.birdeye.so/public/tokenlist?sort_by=volume_24h&sort_type=desc&limit=10"
-    headers = {"X-API-KEY": BIRDEYE_API}
+def format_price(price):
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        return response.json().get("data", [])
-    except Exception as e:
-        logger.error(f"Error fetching top coins: {e}")
-        return []
-
-def filter_and_alert(coins):
-    for coin in coins:
-        try:
-            name = coin.get("name")
-            symbol = coin.get("symbol")
-            address = coin.get("address")
-            volume = float(coin.get("volume_24h", 0))
-            market_cap = float(coin.get("mc", 0))
-            if market_cap >= 80000 and volume >= 25000:
-                text = f"🔔 *Test Coin Alert!*"
-{name} ({symbol})
-MC: ${int(market_cap):,}
-24h Volume: ${int(volume):,}
-Birdeye: https://birdeye.so/token/{address}?chain=solana"
-                bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="Markdown")
-                logger.info(f"Alert sent for {symbol}")
-                return True
-        except Exception as e:
-            logger.error(f"Error parsing coin: {e}")
-    return False
+        return round(float(price), 6)
+    except:
+        return 0
 
 async def run_test_sniper():
-    logger.info("ð Running test sniper...")
+    logger.info("🧪 Running test sniper...")
+
     while True:
         coins = get_top_coins()
-        if filter_and_alert(coins):
-            logger.info("â Test alert sent. Stopping sniper.")
-            break
-        logger.info("ð No eligible coins yet. Retrying in 60s...")
-        await asyncio.sleep(60)
+        for coin in coins:
+            try:
+                symbol = coin.get("symbol")
+                token_name = coin.get("name")
+                token_symbol = coin.get("symbol")
+                address = coin.get("address")
+                price = format_price(coin.get("price", 0))
+                volume = float(coin.get("volume_24h", 0))
+                market_cap = float(coin.get("mc", 0))
+                dexscreener_url = f"https://dexscreener.com/solana/{address}"
 
-if __name__ == "__main__":
-    asyncio.run(run_test_sniper())
+                if market_cap >= 80000 and volume >= 25000:
+                    text = (
+                        f"🔔 *Test Coin Alert!*\n\n"
+                        f"Name: {token_name}\n"
+                        f"Symbol: {token_symbol}\n"
+                        f"Price: ${price:.6f}\n"
+                        f"24h Volume: ${int(volume):,}\n"
+                        f"Market Cap: ${int(market_cap):,}\n"
+                        f"[Buy Link (DEX Screener)]({dexscreener_url})"
+                    )
+
+                    await bot.send_message(chat_id=TELEGRAM_ID, text=text, parse_mode="Markdown")
+                    logger.info(f"✅ Alert sent for {symbol}")
+                    return True
+
+            except Exception as e:
+                logger.error(f"Error parsing coin: {e}")
+                continue
+
+        time.sleep(5)
