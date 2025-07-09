@@ -26,6 +26,7 @@ def fetch_tokens():
     try:
         response = requests.get(DEX_API, headers=HEADERS)
         data = response.json()
+        logger.info(f"✅ Pulled {len(data.get('data', []))} tokens from Birdeye")
         return data.get("data", [])
     except Exception as e:
         logger.error(f"Fetch error: {e}")
