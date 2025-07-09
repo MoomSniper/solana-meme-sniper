@@ -7,7 +7,9 @@ import os
 from telegram import Bot
 
 TELEGRAM_ID = os.getenv("TELEGRAM_ID")
+load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(token=BOT_TOKEN)
 bot = Bot(token=BOT_TOKEN)
 
 logging.basicConfig(level=logging.INFO)
