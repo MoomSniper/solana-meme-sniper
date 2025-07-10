@@ -6,7 +6,10 @@ from telegram import Bot
 from config import TELEGRAM_ID, BOT_TOKEN
 
 logger = logging.getLogger("BrowserSniper")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 bot = Bot(token=BOT_TOKEN)
 sent_tokens = set()
