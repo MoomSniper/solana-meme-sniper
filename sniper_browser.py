@@ -7,7 +7,11 @@ from config import TELEGRAM_ID, BOT_TOKEN
 
 async def main():
     print("🚀 Starting sniper browser...")
-    # TODO: Replace this with your actual logic
+
+    # TEMP: basic fetch test
+    import httpx
+    r = await httpx.AsyncClient().get("https://api.dexscreener.com/latest/dex/pairs/solana")
+    print(r.json())  # or just print(r.text)
 
 logger = logging.getLogger("BrowserSniper")
 logging.basicConfig(
