@@ -60,3 +60,7 @@ async def run_browser_sniper():
 
         logger.info("✅ Sniper running... waiting for token activity.")
         await asyncio.sleep(999999)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
