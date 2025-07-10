@@ -5,6 +5,10 @@ from playwright.async_api import async_playwright
 from telegram import Bot
 from config import TELEGRAM_ID, BOT_TOKEN
 
+async def main():
+    print("🚀 Starting sniper browser...")
+    # TODO: Replace this with your actual logic
+
 logger = logging.getLogger("BrowserSniper")
 logging.basicConfig(
     level=logging.DEBUG,
