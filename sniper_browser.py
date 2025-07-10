@@ -5,7 +5,7 @@ from playwright.async_api import async_playwright
 from telegram import Bot
 from config import TELEGRAM_ID, BOT_TOKEN
 
-iimport httpx
+import httpx
 
 async def main():
     print("🚀 Starting sniper browser...")
