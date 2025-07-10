@@ -4,7 +4,6 @@ import json
 from playwright.async_api import async_playwright
 from telegram import Bot
 from config import TELEGRAM_ID, BOT_TOKEN
-
 import httpx
 
 async def main():
@@ -18,6 +17,16 @@ async def main():
         if response.status_code != 200:
             print(f"❌ Failed: {response.status_code}")
             return
+        
+        data = response.json()
+        for pair in data.get("pairs", [])[:5]:
+            name = pair["baseToken"]["name"]
+            price = pair["priceUsd"]
+            volume = pair["volume"]["h1"]
+            print(f"{name} — ${price} | 1h Vol: ${volume}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
         
         data = response.json()
         for pair in data.get("pairs", [])[:5]:
