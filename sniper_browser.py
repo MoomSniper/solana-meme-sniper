@@ -5,22 +5,45 @@ from playwright.async_api import async_playwright
 from telegram import Bot
 from config import TELEGRAM_ID, BOT_TOKEN
 
-import httpx
+iimport httpx
 
 async def main():
     print("🚀 Starting sniper browser...")
 
-    url = "https://api.dexscreener.com/latest/dex/pairs/solana"
+    url = "https://api.dexscreener.com/latest/dex/search/?q=sol"
 
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
+        
+        if response.status_code != 200:
+            print(f"❌ Failed: {response.status_code}")
+            return
+        
         data = response.json()
-
-        for pair in data["pairs"][:5]:  # Limit to top 5 for now
+        for pair in data.get("pairs", [])[:5]:
             name = pair["baseToken"]["name"]
             price = pair["priceUsd"]
             volume = pair["volume"]["h1"]
-            print(f"{name} — ${price} | 1h Volume: ${volume}")
+            print(f"{name} — ${price} | 1h Vol: ${volume}")import httpx
+
+async def main():
+    print("🚀 Starting sniper browser...")
+
+    url = "https://api.dexscreener.com/latest/dex/search/?q=sol"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        
+        if response.status_code != 200:
+            print(f"❌ Failed: {response.status_code}")
+            return
+        
+        data = response.json()
+        for pair in data.get("pairs", [])[:5]:
+            name = pair["baseToken"]["name"]
+            price = pair["priceUsd"]
+            volume = pair["volume"]["h1"]
+            print(f"{name} — ${price} | 1h Vol: ${volume}")
 
 logger = logging.getLogger("BrowserSniper")
 logging.basicConfig(
