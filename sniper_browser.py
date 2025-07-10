@@ -5,13 +5,22 @@ from playwright.async_api import async_playwright
 from telegram import Bot
 from config import TELEGRAM_ID, BOT_TOKEN
 
+import httpx
+
 async def main():
     print("🚀 Starting sniper browser...")
 
-    # TEMP: basic fetch test
-    import httpx
-    r = await httpx.AsyncClient().get("https://api.dexscreener.com/latest/dex/pairs/solana")
-    print(r.json())  # or just print(r.text)
+    url = "https://api.dexscreener.com/latest/dex/pairs/solana"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        data = response.json()
+
+        for pair in data["pairs"][:5]:  # Limit to top 5 for now
+            name = pair["baseToken"]["name"]
+            price = pair["priceUsd"]
+            volume = pair["volume"]["h1"]
+            print(f"{name} — ${price} | 1h Volume: ${volume}")
 
 logger = logging.getLogger("BrowserSniper")
 logging.basicConfig(
